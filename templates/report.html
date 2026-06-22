@@ -45,9 +45,9 @@
       <div class="stat">
         <span class="k">ai_crawler_access:</span>
         {% if report.blocked_ai_crawlers %}
-          <span class="v bad">{{ report.blocked_ai_crawlers|length }} blocked</span>
+          <span class="v bad">{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
         {% else %}
-          <span class="v good">clear</span>
+          <span class="v good">{{ report.crawler_access_pct }}% clear</span>
         {% endif %}
       </div>
       <div class="stat">
@@ -56,9 +56,20 @@
       </div>
     </div>
 
-    {% if report.blocked_ai_crawlers %}
-      <div class="callout">! blocked in robots.txt: {{ report.blocked_ai_crawlers|join(', ') }}</div>
-    {% endif %}
+    <div class="breakdown">
+      <div class="breakdown-label">ai crawler breakdown</div>
+      {% for c in report.ai_crawler_breakdown %}
+        {% if c.allowed and c.explicit %}
+          <span class="tag type">{{ c.bot }} &middot; named &amp; allowed</span>
+        {% elif c.allowed and not c.explicit %}
+          <span class="tag type">{{ c.bot }} &middot; inherited, allowed</span>
+        {% elif not c.allowed and not c.explicit %}
+          <span class="tag recommended">{{ c.bot }} &middot; inherited, blocked</span>
+        {% else %}
+          <span class="tag missing">{{ c.bot }} &middot; named &amp; blocked</span>
+        {% endif %}
+      {% endfor %}
+    </div>
 
     {% if not report.vocab_check_available %}
       <p class="note">note: live schema.org vocabulary lookup wasn't reachable for this scan, so "unrecognized type" flags are skipped.</p>

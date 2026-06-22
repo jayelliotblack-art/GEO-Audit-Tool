@@ -16,7 +16,7 @@ adjust -- this is exactly the kind of curation that should run through your
 judgment, not mine.
 """
 
-import urllib.robotparser
+from protego import Protego
 
 # Required vs. recommended properties per schema type, for rich-result
 # eligibility. Keys match the @type string as it appears in JSON-LD.
@@ -109,26 +109,55 @@ def check_required_fields(item, type_name):
     return missing_required, missing_recommended
 
 
-def check_ai_crawler_access(robots_txt, sample_urls):
-    """For each known AI crawler, checks whether it would be blocked from
-    the URLs we actually tried to scan -- not just a blanket 'Disallow: /'
-    pattern. Real robots.txt files on larger sites usually block through
-    many specific path rules rather than a single root-level disallow, and
-    a bot with no explicit rule of its own falls through to whatever the
-    '*' wildcard rule says. urllib.robotparser already implements that
-    precedence correctly, so we lean on it directly rather than re-deriving
-    it with string matching.
+def _explicitly_named_agents(robots_txt):
+    """Returns the set of lowercased user-agent names explicitly written in
+    the file, excluding '*'. Protego doesn't expose this distinction
+    itself (it just resolves final permissions), so we scan the raw text
+    directly -- this is the only part of the check that needs to."""
+    named = set()
+    for raw_line in robots_txt.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        if key.strip().lower() == "user-agent":
+            value = value.strip().lower()
+            if value and value != "*":
+                named.add(value)
+    return named
 
-    A bot is reported as 'blocked' if it can't fetch ANY of the sampled
-    URLs -- mirroring the same all-or-nothing situation our own crawler may
-    have just hit."""
+
+def classify_ai_crawler_access(robots_txt, sample_urls):
+    """For each known AI crawler, returns whether it can access the URLs we
+    actually sampled, AND whether that's because the site deliberately named
+    it in robots.txt or because it just inherits whatever the wildcard '*'
+    rule happens to say. Those are very different findings: a bot explicitly
+    allowed is a deliberate GEO decision; a bot that merely falls through a
+    permissive wildcard got the same outcome by accident; a bot that falls
+    through a *blocking* wildcard is usually just an oversight (nobody
+    updated robots.txt for a newer bot category) rather than a deliberate
+    block -- worth surfacing differently than 'they don't want AI crawlers
+    here' when a site has explicitly named and blocked a bot.
+
+    Returns a list of dicts: [{'bot': str, 'allowed': bool, 'explicit': bool}]
+    A bot is 'allowed' if it can fetch at least one sampled URL -- mirroring
+    the same all-or-nothing standard our own crawler is held to."""
     if not robots_txt or not sample_urls:
-        return []
+        # No robots.txt at all -- allowed by convention, and there's nothing
+        # to have named anything in, so every result is 'inherited' by definition.
+        return [{"bot": bot, "allowed": True, "explicit": False} for bot in AI_CRAWLER_USER_AGENTS]
 
-    blocked = []
+    named = _explicitly_named_agents(robots_txt)
+    rp = Protego.parse(robots_txt)
+    results = []
     for bot in AI_CRAWLER_USER_AGENTS:
-        rp = urllib.robotparser.RobotFileParser()
-        rp.parse(robots_txt.splitlines())
-        if not any(rp.can_fetch(bot, url) for url in sample_urls):
-            blocked.append(bot)
-    return blocked
+        allowed = any(rp.can_fetch(url, bot) for url in sample_urls)
+        results.append({"bot": bot, "allowed": allowed, "explicit": bot.lower() in named})
+    return results
+
+
+def check_ai_crawler_access(robots_txt, sample_urls):
+    """Thin wrapper kept for the simple blocked/not-blocked view used in the
+    score and the headline callout; classify_ai_crawler_access has the full
+    detail this is derived from."""
+    return [c["bot"] for c in classify_ai_crawler_access(robots_txt, sample_urls) if not c["allowed"]]

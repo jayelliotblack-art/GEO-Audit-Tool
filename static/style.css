@@ -179,6 +179,16 @@ a:focus-visible {
 .statline .stat .v.warn { color: var(--warn); }
 .statline .stat .v.bad { color: var(--bad); }
 
+.breakdown { margin-bottom: 28px; }
+.breakdown-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+
 .callout {
   font-family: var(--mono);
   font-size: 13px;

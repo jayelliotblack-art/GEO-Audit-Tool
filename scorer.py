@@ -16,7 +16,7 @@ from extractor import extract_json_ld, extract_microdata, get_types
 from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
-    check_ai_crawler_access,
+    classify_ai_crawler_access,
     check_required_fields,
     is_fully_complete,
 )
@@ -107,13 +107,32 @@ def build_report(domain, crawl_results, sampled_urls):
 
     total_pages = len(crawl_results)
     robots_txt = _check_robots(domain)
-    blocked_crawlers = check_ai_crawler_access(robots_txt, sampled_urls)
+    ai_crawler_breakdown = classify_ai_crawler_access(robots_txt, sampled_urls)
+    blocked_crawlers = [c["bot"] for c in ai_crawler_breakdown if not c["allowed"]]
     llms_txt_present = _check_llms_txt(domain)
 
     schema_coverage_pct = (pages_with_schema / total_pages * 100) if total_pages else 0
-    crawler_access_pct = (
-        (len(AI_CRAWLER_USER_AGENTS) - len(blocked_crawlers)) / len(AI_CRAWLER_USER_AGENTS) * 100
-    )
+
+    total_bots = len(AI_CRAWLER_USER_AGENTS)
+    crawler_access_pct = (total_bots - len(blocked_crawlers)) / total_bots * 100
+    # Layer a small explicit/inherited modifier on top of the base allowed-
+    # vs-blocked percentage above. Inherited (default-robots.txt) outcomes
+    # get zero modifier either way -- a bot that happens to be allowed by a
+    # wildcard it was never specifically considered for is fine, not
+    # praiseworthy, and a bot blocked the same passive way is more likely an
+    # oversight than a deliberate stance. Explicit outcomes get a real
+    # modifier in both directions: a deliberate allow is a genuine GEO
+    # decision worth a small reward; a deliberate block is a bigger,
+    # 3x-weighted penalty, since actively shutting out AI crawlers is a more
+    # consequential call than the low-effort act of allow-listing one.
+    EXPLICIT_ALLOW_BONUS_MAX = 5
+    EXPLICIT_BLOCK_PENALTY_MAX = 15
+    explicit_allowed = sum(1 for c in ai_crawler_breakdown if c["allowed"] and c["explicit"])
+    explicit_blocked = sum(1 for c in ai_crawler_breakdown if not c["allowed"] and c["explicit"])
+    crawler_access_pct += (explicit_allowed / total_bots) * EXPLICIT_ALLOW_BONUS_MAX
+    crawler_access_pct -= (explicit_blocked / total_bots) * EXPLICIT_BLOCK_PENALTY_MAX
+    crawler_access_pct = max(0, min(100, crawler_access_pct))
+
     geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
     # % of detected entities (that we have a rule for) with no missing
     # required OR recommended fields. Defaults to 100 when nothing's
@@ -152,6 +171,8 @@ def build_report(domain, crawl_results, sampled_urls):
         "scoreable_total": scoreable_total,
         "scoreable_complete": scoreable_complete,
         "blocked_ai_crawlers": blocked_crawlers,
+        "ai_crawler_breakdown": ai_crawler_breakdown,
+        "crawler_access_pct": round(crawler_access_pct),
         "llms_txt_present": llms_txt_present,
         "vocab_check_available": known_types is not None,
         "overall_score": overall_score,
