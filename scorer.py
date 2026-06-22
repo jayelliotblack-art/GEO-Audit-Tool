@@ -135,9 +135,19 @@ def build_report(domain, crawl_results, sampled_urls):
 
     geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
     # % of detected entities (that we have a rule for) with no missing
-    # required OR recommended fields. Defaults to 100 when nothing's
-    # scoreable -- we don't penalize for types we have no opinion on.
-    schema_quality_pct = (scoreable_complete / scoreable_total * 100) if scoreable_total else 100
+    # required OR recommended fields. Two different reasons scoreable_total
+    # can be 0, and they deserve opposite treatment:
+    #   - schema exists, but none of it is a type we have a rule for -> no
+    #     basis to penalize, default to 100 (benefit of the doubt)
+    #   - no schema exists on the site at all -> there's nothing to BE
+    #     complete, defaulting to 100 here would claim "perfect" for a site
+    #     with literally zero structured data, which is the opposite of true
+    if scoreable_total:
+        schema_quality_pct = scoreable_complete / scoreable_total * 100
+    elif pages_with_schema:
+        schema_quality_pct = 100
+    else:
+        schema_quality_pct = 0
 
     if total_pages == 0:
         # No pages were actually scanned (almost always: robots.txt disallowed
