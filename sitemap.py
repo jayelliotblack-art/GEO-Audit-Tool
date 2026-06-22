@@ -6,8 +6,8 @@ Finds and parses a site's XML sitemap, including sitemap index files
 """
 
 import gzip
-import io
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 
 import requests
 
@@ -34,7 +34,6 @@ def _parse_xml(content):
     tag = root.tag.split("}")[-1]
     children = []
     for child in root:
-        ctag = child.tag.split("}")[-1]
         loc = None
         for sub in child:
             stag = sub.tag.split("}")[-1]
@@ -45,26 +44,68 @@ def _parse_xml(content):
     return tag, children  # tag is "sitemapindex" or "urlset"
 
 
+def _url_exists(url):
+    """GET rather than HEAD -- some servers don't implement HEAD properly
+    for static files and return a misleading status. We need the real
+    status code either way, so just do the request we actually need."""
+    try:
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
+
+
 def discover_sitemap_url(domain):
-    """Try the conventional /sitemap.xml location, falling back to robots.txt's
-    Sitemap: directive if present."""
-    domain = domain.rstrip("/")
-    candidate = f"{domain}/sitemap.xml"
+    """Sitemap location genuinely varies by site -- some publish per-locale
+    sitemaps under a subfolder (e.g. samsung.com/de/sitemap.xml), others
+    only ever have one at the true root (e.g. apple.com/sitemap.xml). There
+    isn't one rule that's correct everywhere, so this tries, in order:
+    1. A sitemap under whatever subfolder the person entered, if any
+       (handles the Samsung case)
+    2. A sitemap at the true domain root (handles the Apple case)
+    3. Whatever robots.txt itself actually advertises via 'Sitemap:' lines
+       -- robots.txt always lives at the true root regardless of any
+       subfolder in the input, and may list a locale-matching sitemap
+       explicitly even when neither guess above happens to work
+    """
+    parsed = urlparse(domain)
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    subfolder = parsed.path.rstrip("/")  # "" if no subfolder was entered
+
+    candidates = []
+    if subfolder:
+        candidates.append(f"{root}{subfolder}/sitemap.xml")
+    candidates.append(f"{root}/sitemap.xml")
+
+    for candidate in candidates:
+        if _url_exists(candidate):
+            return candidate
+
     try:
-        requests.head(candidate, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-        return candidate
+        # robots.txt is always at the true root, never under a subfolder
+        robots = requests.get(f"{root}/robots.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        if robots.status_code == 200:
+            sitemap_lines = [
+                line.split(":", 1)[1].strip()
+                for line in robots.text.splitlines()
+                if line.lower().startswith("sitemap:")
+            ]
+            if subfolder:
+                locale_segment = subfolder.strip("/")
+                locale_match = next(
+                    (s for s in sitemap_lines if locale_segment in urlparse(s).path.strip("/").split("/")),
+                    None,
+                )
+                if locale_match:
+                    return locale_match
+            if sitemap_lines:
+                return sitemap_lines[0]
     except requests.RequestException:
         pass
 
-    try:
-        robots = requests.get(f"{domain}/robots.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-        for line in robots.text.splitlines():
-            if line.lower().startswith("sitemap:"):
-                return line.split(":", 1)[1].strip()
-    except requests.RequestException:
-        pass
-
-    return candidate  # last resort guess; the fetch step will surface the error
+    # Nothing worked -- return the best guess anyway so the caller surfaces
+    # a real, specific error instead of a silent failure.
+    return candidates[0]
 
 
 def get_sitemap_urls(domain):

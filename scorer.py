@@ -10,6 +10,7 @@ know whether 40/30/30 is the right split.
 """
 
 import requests
+from urllib.parse import urlparse
 
 from extractor import extract_json_ld, extract_microdata, get_types
 from geo_rules import (
@@ -24,9 +25,14 @@ USER_AGENT = "GEOAuditBot/0.1 (+https://github.com/; site auditing tool)"
 TIMEOUT = 10
 
 
+def _root(domain):
+    parsed = urlparse(domain)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def _check_llms_txt(domain):
     try:
-        resp = requests.get(f"{domain.rstrip('/')}/llms.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        resp = requests.get(f"{_root(domain)}/llms.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         return resp.status_code == 200
     except requests.RequestException:
         return False
@@ -34,7 +40,7 @@ def _check_llms_txt(domain):
 
 def _check_robots(domain):
     try:
-        resp = requests.get(f"{domain.rstrip('/')}/robots.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        resp = requests.get(f"{_root(domain)}/robots.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
         return resp.text if resp.status_code == 200 else ""
     except requests.RequestException:
         return ""
