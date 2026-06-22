@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <div class="wrap">
+  <div class="wrap-report">
     <a class="back" href="/">&larr; new scan</a>
     <div class="prompt">scan {{ report.domain }}</div>
     <p class="domain">{{ report.domain }}</p>
@@ -62,12 +62,12 @@
 
     <table>
       <thead>
-        <tr><th>url</th><th>schema types found</th><th>issues</th></tr>
+        <tr><th class="col-url">url</th><th class="col-types">schema types found</th><th class="col-issues">issues</th></tr>
       </thead>
       <tbody>
         {% for page in report.pages %}
         <tr>
-          <td class="url">{{ page.url }}</td>
+          <td class="url"><a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a></td>
           {% if page.error %}
             <td colspan="2" class="muted">{{ page.error }}</td>
           {% elif not page.schema_items %}

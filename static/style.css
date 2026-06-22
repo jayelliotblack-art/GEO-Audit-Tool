@@ -26,6 +26,7 @@ body {
 }
 
 .wrap { max-width: 720px; margin: 0 auto; }
+.wrap-report { width: 92%; max-width: 1240px; margin: 0 auto; }
 
 a { color: var(--ink); }
 
@@ -188,7 +189,10 @@ a:focus-visible {
   margin-bottom: 20px;
 }
 
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.col-url { width: 26%; }
+.col-types { width: 30%; }
+.col-issues { width: 44%; }
 th {
   text-align: left;
   font-family: var(--mono);
@@ -206,6 +210,8 @@ td {
 }
 tr:last-child td { border-bottom: none; }
 td.url { word-break: break-all; }
+td.url a { text-decoration: none; }
+td.url a:hover { text-decoration: underline; }
 td.muted { color: var(--ink-muted); }
 
 .tag {
