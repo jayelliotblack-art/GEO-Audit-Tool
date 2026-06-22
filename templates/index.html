@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GEO/AEO Schema Audit</title>
+  <style>
+    body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 640px; margin: 80px auto; padding: 0 20px; color: #222; }
+    h1 { font-size: 24px; }
+    p.sub { color: #666; }
+    form { margin-top: 32px; display: flex; gap: 8px; }
+    input[type=text] { flex: 1; padding: 10px 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 10px 20px; font-size: 16px; background: #111; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .error { color: #b00020; margin-top: 16px; }
+    .note { margin-top: 40px; font-size: 13px; color: #888; }
+  </style>
+</head>
+<body>
+  <h1>GEO / AEO structured data audit</h1>
+  <p class="sub">Site-wide schema markup and AI-crawler accessibility check, not just one page at a time.</p>
+
+  <form action="/scan" method="post">
+    <input type="text" name="domain" placeholder="example.com" required>
+    <button type="submit">Scan</button>
+  </form>
+
+  {% if error %}
+    <p class="error">{{ error }}</p>
+  {% endif %}
+
+  <p class="note">Scans up to 25 pages from the site's XML sitemap. Checks JSON-LD structured data, AI crawler access in robots.txt, and llms.txt presence.</p>
+</body>
+</html>

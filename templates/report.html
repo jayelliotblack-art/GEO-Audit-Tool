@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audit report - {{ report.domain }}</title>
+  <style>
+    body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 880px; margin: 40px auto; padding: 0 20px; color: #222; }
+    h1 { font-size: 22px; }
+    a.back { color: #666; text-decoration: none; font-size: 14px; }
+    .score { font-size: 48px; font-weight: bold; margin: 16px 0; }
+    .summary { display: flex; gap: 24px; margin: 24px 0; flex-wrap: wrap; }
+    .stat { background: #f6f6f6; border-radius: 8px; padding: 12px 16px; min-width: 160px; }
+    .stat .label { font-size: 12px; color: #666; }
+    .stat .value { font-size: 18px; font-weight: bold; }
+    .warn { color: #b00020; }
+    .ok { color: #1a7f37; }
+    table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 14px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    th { font-size: 12px; color: #666; text-transform: uppercase; }
+    .tag { display: inline-block; background: #eee; border-radius: 4px; padding: 2px 6px; margin: 2px 2px 2px 0; font-size: 12px; }
+    .tag.missing { background: #fde2e1; color: #b00020; }
+    .tag.unrecognized { background: #fff3cd; color: #806600; }
+    .note { margin-top: 32px; font-size: 13px; color: #888; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">&larr; New scan</a>
+  <h1>{{ report.domain }}</h1>
+  <div class="score">{{ report.overall_score }}/100</div>
+
+  <div class="summary">
+    <div class="stat">
+      <div class="label">Pages scanned</div>
+      <div class="value">{{ report.total_pages_scanned }} of {{ report.urls_found_total }} found</div>
+    </div>
+    <div class="stat">
+      <div class="label">Schema coverage</div>
+      <div class="value">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }} pages)</div>
+    </div>
+    <div class="stat">
+      <div class="label">AI crawler access</div>
+      {% if report.blocked_ai_crawlers %}
+        <div class="value warn">{{ report.blocked_ai_crawlers|length }} blocked</div>
+      {% else %}
+        <div class="value ok">None blocked</div>
+      {% endif %}
+    </div>
+    <div class="stat">
+      <div class="label">llms.txt</div>
+      <div class="value {{ 'ok' if report.llms_txt_present else '' }}">{{ 'Present' if report.llms_txt_present else 'Not found' }}</div>
+    </div>
+  </div>
+
+  {% if report.blocked_ai_crawlers %}
+    <p class="warn">Blocked in robots.txt: {{ report.blocked_ai_crawlers|join(', ') }}</p>
+  {% endif %}
+
+  {% if not report.vocab_check_available %}
+    <p class="note">Note: live schema.org vocabulary lookup wasn't reachable for this scan, so "unrecognized type" flags below are skipped.</p>
+  {% endif %}
+
+  <table>
+    <thead>
+      <tr><th>URL</th><th>Schema types found</th><th>Issues</th></tr>
+    </thead>
+    <tbody>
+      {% for page in report.pages %}
+      <tr>
+        <td>{{ page.url }}</td>
+        {% if page.error %}
+          <td colspan="2" class="warn">{{ page.error }}</td>
+        {% elif not page.items %}
+          <td colspan="2">No structured data found</td>
+        {% else %}
+          <td>
+            {% for item in page.items %}
+              <a class="tag" href="{{ item.docs_url }}" target="_blank">{{ item.type }}</a>
+            {% endfor %}
+          </td>
+          <td>
+            {% for item in page.items %}
+              {% for field in item.missing_required %}
+                <span class="tag missing">missing required: {{ field }}</span>
+              {% endfor %}
+              {% for field in item.missing_recommended %}
+                <span class="tag">missing recommended: {{ field }}</span>
+              {% endfor %}
+              {% if not item.recognized %}
+                <span class="tag unrecognized">unrecognized type</span>
+              {% endif %}
+            {% endfor %}
+          </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="note">{{ report.skipped_by_robots }} URL(s) skipped due to robots.txt restrictions.</p>
+</body>
+</html>
