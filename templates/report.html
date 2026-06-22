@@ -39,6 +39,10 @@
         <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
       </div>
       <div class="stat">
+        <span class="k">schema_quality:</span>
+        <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
+      </div>
+      <div class="stat">
         <span class="k">ai_crawler_access:</span>
         {% if report.blocked_ai_crawlers %}
           <span class="v bad">{{ report.blocked_ai_crawlers|length }} blocked</span>

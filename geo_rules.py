@@ -84,6 +84,19 @@ AI_CRAWLER_USER_AGENTS = [
 ]
 
 
+def is_fully_complete(missing_required, missing_recommended, type_name):
+    """Returns None if we have no PRIORITY_TYPES rule for this type (nothing
+    to grade it against), otherwise True/False. Deliberately binary rather
+    than partial-credit: a Product missing 3 of 5 recommended fields and one
+    missing 1 of 5 are both 'incomplete' for this purpose -- the percentage
+    that matters is how many of your detected entities are fully sorted,
+    not an average that a few good ones can paper over."""
+    rule = PRIORITY_TYPES.get(type_name)
+    if not rule or (not rule["required"] and not rule["recommended"]):
+        return None
+    return not missing_required and not missing_recommended
+
+
 def check_required_fields(item, type_name):
     """Returns (missing_required, missing_recommended) for a single
     structured data item against our curated rules. Empty lists if the type

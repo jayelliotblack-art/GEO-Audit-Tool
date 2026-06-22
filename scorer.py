@@ -18,6 +18,7 @@ from geo_rules import (
     GEO_SIGNAL_TYPES,
     check_ai_crawler_access,
     check_required_fields,
+    is_fully_complete,
 )
 from schema_vocab import docs_url_for, load_vocab
 
@@ -52,6 +53,8 @@ def build_report(domain, crawl_results, sampled_urls):
     page_reports = []
     pages_with_schema = 0
     geo_signal_count = 0
+    scoreable_total = 0
+    scoreable_complete = 0
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
@@ -82,6 +85,11 @@ def build_report(domain, crawl_results, sampled_urls):
             is_recognized = (known_types is None) or (type_name in known_types)
             if type_name in GEO_SIGNAL_TYPES:
                 geo_signal_count += 1
+            complete = is_fully_complete(missing_required, missing_recommended, type_name)
+            if complete is not None:
+                scoreable_total += 1
+                if complete:
+                    scoreable_complete += 1
             item_reports.append({
                 "type": type_name,
                 "format": entity["format"],
@@ -107,6 +115,10 @@ def build_report(domain, crawl_results, sampled_urls):
         (len(AI_CRAWLER_USER_AGENTS) - len(blocked_crawlers)) / len(AI_CRAWLER_USER_AGENTS) * 100
     )
     geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
+    # % of detected entities (that we have a rule for) with no missing
+    # required OR recommended fields. Defaults to 100 when nothing's
+    # scoreable -- we don't penalize for types we have no opinion on.
+    schema_quality_pct = (scoreable_complete / scoreable_total * 100) if scoreable_total else 100
 
     if total_pages == 0:
         # No pages were actually scanned (almost always: robots.txt disallowed
@@ -114,8 +126,21 @@ def build_report(domain, crawl_results, sampled_urls):
         # is misleading, not just incomplete -- don't produce one.
         overall_score = None
     else:
+        # Five pillars rather than three. llms.txt gets a light 10% rather
+        # than being ignored or weighted heavily -- it's a real, displayed
+        # finding (inconsistent to show it prominently and let it affect
+        # nothing), but it's still an emerging, unofficial convention, and a
+        # genuinely well-optimized site shouldn't be punished hard for not
+        # having adopted something unproven yet. These weights are exactly
+        # the kind of call that should run through your judgment, not mine --
+        # adjust freely once you've seen this run against more real sites.
+        llms_score = 100 if llms_txt_present else 0
         overall_score = round(
-            schema_coverage_pct * 0.4 + crawler_access_pct * 0.3 + geo_signal_score * 0.3
+            schema_coverage_pct * 0.25
+            + schema_quality_pct * 0.25
+            + crawler_access_pct * 0.20
+            + geo_signal_score * 0.20
+            + llms_score * 0.10
         )
 
     return {
@@ -123,6 +148,9 @@ def build_report(domain, crawl_results, sampled_urls):
         "total_pages_scanned": total_pages,
         "pages_with_schema": pages_with_schema,
         "schema_coverage_pct": round(schema_coverage_pct),
+        "schema_quality_pct": round(schema_quality_pct),
+        "scoreable_total": scoreable_total,
+        "scoreable_complete": scoreable_complete,
         "blocked_ai_crawlers": blocked_crawlers,
         "llms_txt_present": llms_txt_present,
         "vocab_check_available": known_types is not None,
