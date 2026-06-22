@@ -43,8 +43,12 @@ def extract_json_ld(html):
 
 
 def get_types(item):
-    """@type can be a string or a list of strings. Normalize to a list."""
+    """@type can be a string or a list of strings. Normalize to a list,
+    dropping any malformed entries that aren't plain strings (some sites'
+    JSON-LD has @type as a nested object, which would otherwise blow up a
+    dict lookup downstream)."""
     t = item.get("@type")
     if t is None:
         return []
-    return t if isinstance(t, list) else [t]
+    candidates = t if isinstance(t, list) else [t]
+    return [c for c in candidates if isinstance(c, str)]

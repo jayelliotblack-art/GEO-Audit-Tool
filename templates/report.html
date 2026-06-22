@@ -69,16 +69,16 @@
         <td>{{ page.url }}</td>
         {% if page.error %}
           <td colspan="2" class="warn">{{ page.error }}</td>
-        {% elif not page.items %}
+        {% elif not page.schema_items %}
           <td colspan="2">No structured data found</td>
         {% else %}
           <td>
-            {% for item in page.items %}
+            {% for item in page.schema_items %}
               <a class="tag" href="{{ item.docs_url }}" target="_blank">{{ item.type }}</a>
             {% endfor %}
           </td>
           <td>
-            {% for item in page.items %}
+            {% for item in page.schema_items %}
               {% for field in item.missing_required %}
                 <span class="tag missing">missing required: {{ field }}</span>
               {% endfor %}

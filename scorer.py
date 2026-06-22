@@ -52,7 +52,7 @@ def build_report(domain, crawl_results):
             page_reports.append({
                 "url": page["url"],
                 "error": page["error"] or f"HTTP {page['status_code']}",
-                "items": [],
+                "schema_items": [],
             })
             continue
 
@@ -78,7 +78,7 @@ def build_report(domain, crawl_results):
         page_reports.append({
             "url": page["url"],
             "error": None,
-            "items": item_reports,
+            "schema_items": item_reports,
         })
 
     total_pages = len(crawl_results)
