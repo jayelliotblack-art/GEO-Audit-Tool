@@ -17,9 +17,9 @@
     {% if report.overall_score is none %}
       <div class="callout">
         {% if report.robots_access_denied %}
-          ! couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. this says nothing about whether {{ report.domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
+          ! Couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. This says nothing about whether {{ report.domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
         {% else %}
-          ! couldn't scan any pages -- robots.txt's published rules disallowed this tool's crawler on all {{ report.skipped_by_robots }} sampled url(s). the ai_crawler_access and llms_txt checks below don't depend on crawling and are still real; there's just nothing to show for the schema audit itself.
+          ! Couldn't scan any pages -- robots.txt's published rules disallowed this tool's crawler on all {{ report.skipped_by_robots }} sampled URL(s). The AI crawler access and llms.txt checks below don't depend on crawling and are still real; there's just nothing to show for the schema audit itself.
         {% endif %}
       </div>
     {% else %}
@@ -29,33 +29,37 @@
       </div>
     {% endif %}
 
+    {% set coverage_tier = 'good' if report.schema_coverage_pct >= 70 else ('warn' if report.schema_coverage_pct >= 40 else 'bad') %}
+    {% set quality_tier = 'good' if report.schema_quality_pct >= 70 else ('warn' if report.schema_quality_pct >= 40 else 'bad') %}
+    {% set crawler_tier = 'good' if report.crawler_access_pct >= 70 else ('warn' if report.crawler_access_pct >= 40 else 'bad') %}
+
     <div class="statline">
       <div class="stat">
-        <span class="k">pages_scanned:</span>
+        <span class="k">Pages scanned:</span>
         <span class="v">{{ report.total_pages_scanned }}/{{ report.urls_found_total }}</span>
       </div>
-      <div class="stat">
-        <span class="k">schema_coverage:</span>
+      <div class="stat stat-{{ coverage_tier }}">
+        <span class="k">Schema coverage:</span>
         <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
       </div>
-      <div class="stat">
-        <span class="k">schema_quality:</span>
+      <div class="stat stat-{{ quality_tier }}">
+        <span class="k">Schema quality:</span>
         <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
       </div>
-      <div class="stat">
-        <span class="k">ai_crawler_access:</span>
+      <div class="stat stat-{{ crawler_tier }}">
+        <span class="k">AI crawler access:</span>
         {% if report.blocked_ai_crawlers %}
           <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
         {% else %}
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
         {% endif %}
       </div>
-      <div class="stat">
-        <span class="k">llms_txt:</span>
+      <div class="stat {{ 'stat-good' if report.llms_txt_present else '' }}">
+        <span class="k">llms.txt:</span>
         {% if report.llms_txt_present %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>present</span>
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Present</span>
         {% else %}
-          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>absent</span>
+          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
         {% endif %}
       </div>
     </div>
@@ -100,7 +104,7 @@
     {% endif %}
 
     <div class="breakdown">
-      <div class="breakdown-label">ai crawler breakdown</div>
+      <div class="breakdown-label">AI crawler breakdown</div>
       {% for c in report.ai_crawler_breakdown %}
         {% if c.allowed and c.explicit %}
           <span class="tag type">{{ c.bot }} &middot; named &amp; allowed</span>
@@ -115,12 +119,12 @@
     </div>
 
     {% if not report.vocab_check_available %}
-      <p class="note">note: live schema.org vocabulary lookup wasn't reachable for this scan, so "unrecognized type" flags are skipped.</p>
+      <p class="note">Note: live schema.org vocabulary lookup wasn't reachable for this scan, so "unrecognized type" flags are skipped.</p>
     {% endif %}
 
     <table>
       <thead>
-        <tr><th class="col-url">url</th><th class="col-types">schema types found</th><th class="col-issues">issues</th></tr>
+        <tr><th class="col-url">URL</th><th class="col-types">Schema types found</th><th class="col-issues">Issues</th></tr>
       </thead>
       <tbody>
         {% for page in report.pages %}
@@ -129,7 +133,7 @@
           {% if page.error %}
             <td colspan="2" class="muted">{{ page.error }}</td>
           {% elif not page.schema_items %}
-            <td colspan="2" class="muted">no structured data found</td>
+            <td colspan="2" class="muted">No structured data found</td>
           {% else %}
             <td>
               {% for item in page.schema_items %}
@@ -139,13 +143,13 @@
             <td>
               {% for item in page.schema_items %}
                 {% for field in item.missing_required %}
-                  <span class="tag missing">missing required: {{ field }}</span>
+                  <span class="tag missing">Missing required: {{ field }}</span>
                 {% endfor %}
                 {% for field in item.missing_recommended %}
-                  <span class="tag recommended">missing recommended: {{ field }}</span>
+                  <span class="tag recommended">Missing recommended: {{ field }}</span>
                 {% endfor %}
                 {% if not item.recognized %}
-                  <span class="tag unrecognized">unrecognized type</span>
+                  <span class="tag unrecognized">Unrecognized type</span>
                 {% endif %}
               {% endfor %}
             </td>
@@ -155,7 +159,7 @@
       </tbody>
     </table>
 
-    <p class="note">{{ report.skipped_by_robots }} url(s) skipped due to robots.txt restrictions</p>
+    <p class="note">{{ report.skipped_by_robots }} URL(s) skipped due to robots.txt restrictions</p>
   </div>
 </body>
 </html>

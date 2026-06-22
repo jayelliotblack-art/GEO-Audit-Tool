@@ -43,7 +43,7 @@ def scan():
 
     domain = _normalize_domain(raw_domain)
 
-    urls, sitemap_error = get_sitemap_urls(domain)
+    urls, total_found, sitemap_error = get_sitemap_urls(domain)
     if sitemap_error:
         return render_template("index.html", error=sitemap_error)
 
@@ -53,7 +53,7 @@ def scan():
     urls_to_scan = urls[:MAX_URLS]
     crawl_results, skipped_by_robots, robots_access_denied = fetch_pages(urls_to_scan, domain)
     report = build_report(domain, crawl_results, urls_to_scan)
-    report["urls_found_total"] = len(urls)
+    report["urls_found_total"] = total_found
     report["skipped_by_robots"] = skipped_by_robots
     report["robots_access_denied"] = robots_access_denied
 

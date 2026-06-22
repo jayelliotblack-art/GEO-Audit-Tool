@@ -2,7 +2,9 @@
 sitemap.py
 
 Finds and parses a site's XML sitemap, including sitemap index files
-(a sitemap that just points to other sitemaps, common on larger sites).
+(a sitemap that just points to other sitemaps -- common on larger sites,
+and sometimes nested two or three levels deep: a root index pointing to
+per-category indexes, which point to the actual page sitemaps).
 """
 
 import gzip
@@ -13,8 +15,8 @@ import requests
 
 USER_AGENT = "GEOAuditBot/0.1 (+https://github.com/; site auditing tool)"
 TIMEOUT = 10
-MAX_SITEMAPS_TO_FOLLOW = 5   # cap how many sub-sitemaps we'll follow from an index
-MAX_URLS_TOTAL = 500        # hard ceiling so a huge site can't hang the scan
+MAX_SITEMAPS_TO_FOLLOW = 20  # total sitemap *files* fetched, across all nesting levels
+MAX_URLS_TOTAL = 500        # hard ceiling on pages actually queued for scanning
 
 
 def _fetch(url):
@@ -109,33 +111,54 @@ def discover_sitemap_url(domain):
 
 
 def get_sitemap_urls(domain):
-    """Returns (urls, error). urls is a list of page URLs (capped at
-    MAX_URLS_TOTAL). error is None on success, or a human-readable string
-    describing what went wrong."""
+    """Returns (urls, total_found, error).
+    - urls: page URLs queued for scanning, capped at MAX_URLS_TOTAL
+    - total_found: the REAL count of page URLs actually encountered, before
+      that cap -- this is what should be displayed as "X found", not the
+      cap itself
+    - error: None on success, or a human-readable string
+
+    Recurses through nested sitemap indexes at arbitrary depth (some sites
+    nest two or three levels), rather than assuming only one level of
+    indexing exists. Tracks visited URLs so a misconfigured site that
+    points back at itself can't loop forever.
+    """
     sitemap_url = discover_sitemap_url(domain)
 
     try:
         content = _fetch(sitemap_url)
     except requests.RequestException as exc:
-        return [], f"Couldn't fetch a sitemap at {sitemap_url} ({exc})"
+        return [], 0, f"Couldn't fetch a sitemap at {sitemap_url} ({exc})"
 
     try:
         tag, locs = _parse_xml(content)
     except ET.ParseError as exc:
-        return [], f"Sitemap at {sitemap_url} wasn't valid XML ({exc})"
+        return [], 0, f"Sitemap at {sitemap_url} wasn't valid XML ({exc})"
 
-    if tag == "sitemapindex":
-        page_urls = []
-        for sub_sitemap_url in locs[:MAX_SITEMAPS_TO_FOLLOW]:
-            try:
-                sub_content = _fetch(sub_sitemap_url)
-                _, sub_locs = _parse_xml(sub_content)
-                page_urls.extend(sub_locs)
-            except (requests.RequestException, ET.ParseError):
-                continue  # skip a broken sub-sitemap, don't kill the whole scan
-            if len(page_urls) >= MAX_URLS_TOTAL:
-                break
-        return page_urls[:MAX_URLS_TOTAL], None
+    if tag != "sitemapindex":
+        # A normal, single-level sitemap -- every <loc> here is a real page.
+        total_found = len(locs)
+        return locs[:MAX_URLS_TOTAL], total_found, None
 
-    # tag == "urlset" (a normal, non-index sitemap)
-    return locs[:MAX_URLS_TOTAL], None
+    page_urls = []
+    visited = {sitemap_url}
+    queue = list(locs)
+    sitemaps_fetched = 0
+
+    while queue and sitemaps_fetched < MAX_SITEMAPS_TO_FOLLOW and len(page_urls) < MAX_URLS_TOTAL:
+        sub_url = queue.pop(0)
+        if sub_url in visited:
+            continue
+        visited.add(sub_url)
+        try:
+            sub_content = _fetch(sub_url)
+            sub_tag, sub_locs = _parse_xml(sub_content)
+        except (requests.RequestException, ET.ParseError):
+            continue
+        sitemaps_fetched += 1
+        if sub_tag == "sitemapindex":
+            queue.extend(sub_locs)  # another layer of nesting -- go deeper
+        else:
+            page_urls.extend(sub_locs)  # real pages
+
+    return page_urls[:MAX_URLS_TOTAL], len(page_urls), None
