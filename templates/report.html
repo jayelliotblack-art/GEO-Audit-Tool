@@ -45,16 +45,59 @@
       <div class="stat">
         <span class="k">ai_crawler_access:</span>
         {% if report.blocked_ai_crawlers %}
-          <span class="v bad">{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
         {% else %}
-          <span class="v good">{{ report.crawler_access_pct }}% clear</span>
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
         {% endif %}
       </div>
       <div class="stat">
         <span class="k">llms_txt:</span>
-        <span class="v {{ 'good' if report.llms_txt_present else '' }}">{{ 'present' if report.llms_txt_present else 'absent' }}</span>
+        {% if report.llms_txt_present %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>present</span>
+        {% else %}
+          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>absent</span>
+        {% endif %}
       </div>
     </div>
+
+    {% if report.overall_score is not none %}
+    <div class="summary-block">
+      <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
+      <div id="summary-output"></div>
+    </div>
+    <script type="application/json" id="summary-data">{{ summary_data|tojson }}</script>
+    <script>
+      async function generateSummary() {
+        const btn = document.getElementById('summarize-btn');
+        const output = document.getElementById('summary-output');
+        const data = JSON.parse(document.getElementById('summary-data').textContent);
+        btn.disabled = true;
+        btn.textContent = 'generating...';
+        output.textContent = '';
+        output.className = '';
+        try {
+          const resp = await fetch('/summarize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+          });
+          const json = await resp.json();
+          if (json.error) {
+            output.textContent = '! ' + json.error;
+            output.className = 'error-text';
+          } else {
+            output.textContent = json.summary;
+          }
+        } catch (e) {
+          output.textContent = '! Something went wrong generating the summary.';
+          output.className = 'error-text';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '$ generate summary';
+        }
+      }
+    </script>
+    {% endif %}
 
     <div class="breakdown">
       <div class="breakdown-label">ai crawler breakdown</div>

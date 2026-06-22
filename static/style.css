@@ -176,10 +176,47 @@ a:focus-visible {
 .statline .stat .k { color: var(--ink-muted); }
 .statline .stat .v { font-weight: 500; }
 .statline .stat .v.good { color: var(--good); }
+.icon {
+  width: 12px;
+  height: 12px;
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+.icon-muted { color: var(--ink-muted); }
 .statline .stat .v.warn { color: var(--warn); }
 .statline .stat .v.bad { color: var(--bad); }
 
 .breakdown { margin-bottom: 28px; }
+.summary-block { margin-bottom: 28px; }
+.btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 3px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+#summary-output:not(:empty) {
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border-left: 3px solid var(--good);
+  border-radius: 4px;
+}
+#summary-output.error-text {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--bad);
+  border-left-color: var(--bad);
+}
 .breakdown-label {
   font-family: var(--mono);
   font-size: 11px;

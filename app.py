@@ -10,11 +10,12 @@ websockets) at the cost of a slower response on large sites. Worth revisiting
 once the core checks are proven out.
 """
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 
 from crawler import fetch_pages
 from sitemap import get_sitemap_urls
 from scorer import build_report
+from summarizer import generate_summary
 
 app = Flask(__name__)
 
@@ -56,7 +57,33 @@ def scan():
     report["skipped_by_robots"] = skipped_by_robots
     report["robots_access_denied"] = robots_access_denied
 
-    return render_template("report.html", report=report)
+    # Trimmed subset sent to the optional AI-summary button -- aggregate
+    # stats only, not every page/URL, to keep the prompt (and its cost) small.
+    summary_data = {
+        "domain": report["domain"],
+        "overall_score": report["overall_score"],
+        "schema_coverage_pct": report["schema_coverage_pct"],
+        "pages_with_schema": report["pages_with_schema"],
+        "total_pages_scanned": report["total_pages_scanned"],
+        "schema_quality_pct": report["schema_quality_pct"],
+        "scoreable_complete": report["scoreable_complete"],
+        "scoreable_total": report["scoreable_total"],
+        "crawler_access_pct": report["crawler_access_pct"],
+        "blocked_ai_crawlers": report["blocked_ai_crawlers"],
+        "ai_crawler_breakdown": report["ai_crawler_breakdown"],
+        "llms_txt_present": report["llms_txt_present"],
+    }
+
+    return render_template("report.html", report=report, summary_data=summary_data)
+
+
+@app.route("/summarize", methods=["POST"])
+def summarize():
+    data = request.get_json(silent=True) or {}
+    summary, error = generate_summary(data)
+    if error:
+        return jsonify({"error": error}), 502
+    return jsonify({"summary": summary})
 
 
 if __name__ == "__main__":
