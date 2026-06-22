@@ -97,6 +97,29 @@ def is_fully_complete(missing_required, missing_recommended, type_name):
     return not missing_required and not missing_recommended
 
 
+# A missing recommended field counts for this fraction of a missing required
+# field when computing weighted completeness. Required fields gate rich-
+# result eligibility outright; recommended ones are enhancements -- treating
+# them as equally damaging would overstate how broken a page actually is.
+RECOMMENDED_WEIGHT = 0.25
+
+
+def item_completeness_pct(missing_required, missing_recommended, type_name):
+    """Returns None if there's no rule to grade against (same condition as
+    is_fully_complete), otherwise a continuous 0-100 completeness score.
+    Unlike is_fully_complete's all-or-nothing answer, this is what actually
+    feeds the score: a Product missing one of five recommended fields and
+    one missing all five aren't equally bad, and this reflects that."""
+    rule = PRIORITY_TYPES.get(type_name)
+    if not rule or (not rule["required"] and not rule["recommended"]):
+        return None
+    total_weight = len(rule["required"]) + len(rule["recommended"]) * RECOMMENDED_WEIGHT
+    if total_weight == 0:
+        return None
+    missing_weight = len(missing_required) + len(missing_recommended) * RECOMMENDED_WEIGHT
+    return max(0.0, (1 - missing_weight / total_weight) * 100)
+
+
 def check_required_fields(item, type_name):
     """Returns (missing_required, missing_recommended) for a single
     structured data item against our curated rules. Empty lists if the type

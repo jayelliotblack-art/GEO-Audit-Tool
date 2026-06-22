@@ -71,6 +71,31 @@ def extract_microdata(html, url):
     return results
 
 
+def extract_meta_robots(html):
+    """Returns the lowercased content of <meta name="robots"> if present,
+    else None. A page can be fully allowed by robots.txt and still tell
+    crawlers not to index it via this tag -- a different, page-level signal
+    robots.txt has no way to show."""
+    if not html:
+        return None
+    soup = BeautifulSoup(html, "lxml")
+    tag = soup.find("meta", attrs={"name": lambda v: bool(v) and v.lower() == "robots"})
+    if tag and tag.get("content"):
+        return tag["content"].strip().lower()
+    return None
+
+
+def is_noindexed(meta_robots_content):
+    """meta_robots_content is the raw, comma-separated directive string
+    (e.g. 'noindex, nofollow'). Checks specifically for 'noindex' as its own
+    directive, not just a substring -- avoids a false match on some
+    hypothetical future directive that merely contains those letters."""
+    if not meta_robots_content:
+        return False
+    directives = [d.strip() for d in meta_robots_content.split(",")]
+    return "noindex" in directives
+
+
 def get_types(item):
     """@type can be a string or a list of strings. Normalize to a list,
     dropping any malformed entries that aren't plain strings (some sites'

@@ -12,13 +12,14 @@ know whether 40/30/30 is the right split.
 import requests
 from urllib.parse import urlparse
 
-from extractor import extract_json_ld, extract_microdata, get_types
+from extractor import extract_json_ld, extract_meta_robots, extract_microdata, get_types, is_noindexed
 from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
     classify_ai_crawler_access,
     check_required_fields,
     is_fully_complete,
+    item_completeness_pct,
 )
 from schema_vocab import docs_url_for, load_vocab
 
@@ -55,6 +56,12 @@ def build_report(domain, crawl_results, sampled_urls):
     geo_signal_count = 0
     scoreable_total = 0
     scoreable_complete = 0
+    weighted_completeness_sum = 0.0
+    weighted_completeness_count = 0
+    noindexed_count = 0
+    required_issues = 0
+    recommended_issues = 0
+    unrecognized_issues = 0
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
@@ -62,8 +69,14 @@ def build_report(domain, crawl_results, sampled_urls):
                 "url": page["url"],
                 "error": page["error"] or f"HTTP {page['status_code']}",
                 "schema_items": [],
+                "noindexed": False,
             })
             continue
+
+        meta_robots = extract_meta_robots(page["html"])
+        noindexed = is_noindexed(meta_robots)
+        if noindexed:
+            noindexed_count += 1
 
         json_ld_items = extract_json_ld(page["html"])
         microdata_items = extract_microdata(page["html"], page["url"])
@@ -90,6 +103,17 @@ def build_report(domain, crawl_results, sampled_urls):
                 scoreable_total += 1
                 if complete:
                     scoreable_complete += 1
+
+            weighted_pct = item_completeness_pct(missing_required, missing_recommended, type_name)
+            if weighted_pct is not None:
+                weighted_completeness_sum += weighted_pct
+                weighted_completeness_count += 1
+
+            required_issues += len(missing_required)
+            recommended_issues += len(missing_recommended)
+            if not is_recognized:
+                unrecognized_issues += 1
+
             item_reports.append({
                 "type": type_name,
                 "format": entity["format"],
@@ -103,6 +127,7 @@ def build_report(domain, crawl_results, sampled_urls):
             "url": page["url"],
             "error": None,
             "schema_items": item_reports,
+            "noindexed": noindexed,
         })
 
     total_pages = len(crawl_results)
@@ -134,16 +159,17 @@ def build_report(domain, crawl_results, sampled_urls):
     crawler_access_pct = max(0, min(100, crawler_access_pct))
 
     geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
-    # % of detected entities (that we have a rule for) with no missing
-    # required OR recommended fields. Two different reasons scoreable_total
-    # can be 0, and they deserve opposite treatment:
+    # The score that actually feeds overall_score: a weighted average where
+    # missing required fields cost full weight and missing recommended ones
+    # cost RECOMMENDED_WEIGHT as much (see geo_rules.item_completeness_pct).
+    # Same three-case structure as before for *why* this might be empty:
     #   - schema exists, but none of it is a type we have a rule for -> no
     #     basis to penalize, default to 100 (benefit of the doubt)
     #   - no schema exists on the site at all -> there's nothing to BE
     #     complete, defaulting to 100 here would claim "perfect" for a site
     #     with literally zero structured data, which is the opposite of true
-    if scoreable_total:
-        schema_quality_pct = scoreable_complete / scoreable_total * 100
+    if weighted_completeness_count:
+        schema_quality_pct = weighted_completeness_sum / weighted_completeness_count
     elif pages_with_schema:
         schema_quality_pct = 100
     else:
@@ -172,6 +198,8 @@ def build_report(domain, crawl_results, sampled_urls):
             + llms_score * 0.10
         )
 
+    total_issues = required_issues + recommended_issues + unrecognized_issues
+
     return {
         "domain": domain,
         "total_pages_scanned": total_pages,
@@ -180,6 +208,11 @@ def build_report(domain, crawl_results, sampled_urls):
         "schema_quality_pct": round(schema_quality_pct),
         "scoreable_total": scoreable_total,
         "scoreable_complete": scoreable_complete,
+        "total_issues": total_issues,
+        "required_issues": required_issues,
+        "recommended_issues": recommended_issues,
+        "unrecognized_issues": unrecognized_issues,
+        "noindexed_count": noindexed_count,
         "blocked_ai_crawlers": blocked_crawlers,
         "ai_crawler_breakdown": ai_crawler_breakdown,
         "crawler_access_pct": round(crawler_access_pct),

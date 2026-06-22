@@ -32,6 +32,8 @@
     {% set coverage_tier = 'good' if report.schema_coverage_pct >= 70 else ('warn' if report.schema_coverage_pct >= 40 else 'bad') %}
     {% set quality_tier = 'good' if report.schema_quality_pct >= 70 else ('warn' if report.schema_quality_pct >= 40 else 'bad') %}
     {% set crawler_tier = 'good' if report.crawler_access_pct >= 70 else ('warn' if report.crawler_access_pct >= 40 else 'bad') %}
+    {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
+    {% set noindex_tier = 'bad' if report.noindexed_count > 0 else 'good' %}
 
     <div class="statline">
       <div class="stat">
@@ -45,6 +47,10 @@
       <div class="stat stat-{{ quality_tier }}">
         <span class="k">Schema quality:</span>
         <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
+      </div>
+      <div class="stat stat-{{ issues_tier }}">
+        <span class="k">Issues found:</span>
+        <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
       </div>
       <div class="stat stat-{{ crawler_tier }}">
         <span class="k">AI crawler access:</span>
@@ -60,6 +66,14 @@
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Present</span>
         {% else %}
           <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
+        {% endif %}
+      </div>
+      <div class="stat stat-{{ noindex_tier }}">
+        <span class="k">Noindexed pages:</span>
+        {% if report.noindexed_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.noindexed_count }}</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
         {% endif %}
       </div>
     </div>
@@ -132,15 +146,20 @@
           <td class="url"><a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a></td>
           {% if page.error %}
             <td colspan="2" class="muted">{{ page.error }}</td>
-          {% elif not page.schema_items %}
-            <td colspan="2" class="muted">No structured data found</td>
           {% else %}
             <td>
-              {% for item in page.schema_items %}
-                <a class="tag type" href="{{ item.docs_url }}" target="_blank" rel="noopener">{{ item.type }}<span style="opacity:.6"> &middot; {{ item.format }}</span></a>
-              {% endfor %}
+              {% if not page.schema_items %}
+                <span class="muted">No structured data found</span>
+              {% else %}
+                {% for item in page.schema_items %}
+                  <a class="tag type" href="{{ item.docs_url }}" target="_blank" rel="noopener">{{ item.type }}<span style="opacity:.6"> &middot; {{ item.format }}</span></a>
+                {% endfor %}
+              {% endif %}
             </td>
             <td>
+              {% if page.noindexed %}
+                <span class="tag missing">Noindexed</span>
+              {% endif %}
               {% for item in page.schema_items %}
                 {% for field in item.missing_required %}
                   <span class="tag missing">Missing required: {{ field }}</span>
