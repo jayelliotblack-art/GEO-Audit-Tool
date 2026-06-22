@@ -40,7 +40,7 @@ def _check_robots(domain):
         return ""
 
 
-def build_report(domain, crawl_results):
+def build_report(domain, crawl_results, sampled_urls):
     known_types, _ = load_vocab()  # None, None if the live fetch failed
 
     page_reports = []
@@ -93,7 +93,7 @@ def build_report(domain, crawl_results):
 
     total_pages = len(crawl_results)
     robots_txt = _check_robots(domain)
-    blocked_crawlers = check_ai_crawler_access(robots_txt)
+    blocked_crawlers = check_ai_crawler_access(robots_txt, sampled_urls)
     llms_txt_present = _check_llms_txt(domain)
 
     schema_coverage_pct = (pages_with_schema / total_pages * 100) if total_pages else 0
@@ -102,9 +102,15 @@ def build_report(domain, crawl_results):
     )
     geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
 
-    overall_score = round(
-        schema_coverage_pct * 0.4 + crawler_access_pct * 0.3 + geo_signal_score * 0.3
-    )
+    if total_pages == 0:
+        # No pages were actually scanned (almost always: robots.txt disallowed
+        # our crawler on every sampled URL). A score computed from zero data
+        # is misleading, not just incomplete -- don't produce one.
+        overall_score = None
+    else:
+        overall_score = round(
+            schema_coverage_pct * 0.4 + crawler_access_pct * 0.3 + geo_signal_score * 0.3
+        )
 
     return {
         "domain": domain,

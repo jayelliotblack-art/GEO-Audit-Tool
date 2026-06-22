@@ -14,10 +14,20 @@
     <div class="prompt">scan {{ report.domain }}</div>
     <p class="domain">{{ report.domain }}</p>
 
-    {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
-    <div class="scoreblock {{ tier }}">
-      <div class="score">{{ report.overall_score }}/100</div>
-    </div>
+    {% if report.overall_score is none %}
+      <div class="callout">
+        {% if report.robots_access_denied %}
+          ! couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. this says nothing about whether {{ report.domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
+        {% else %}
+          ! couldn't scan any pages -- robots.txt's published rules disallowed this tool's crawler on all {{ report.skipped_by_robots }} sampled url(s). the ai_crawler_access and llms_txt checks below don't depend on crawling and are still real; there's just nothing to show for the schema audit itself.
+        {% endif %}
+      </div>
+    {% else %}
+      {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
+      <div class="scoreblock {{ tier }}">
+        <div class="score">{{ report.overall_score }}/100</div>
+      </div>
+    {% endif %}
 
     <div class="statline">
       <div class="stat">

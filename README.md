@@ -28,6 +28,13 @@ XML sitemap, crawls the pages it finds, and reports on:
   types) needs normal outbound internet access. It'll work once deployed;
   if it can't reach schema.org for any reason, that check is skipped
   gracefully rather than breaking the scan.
+- Robots.txt handling uses `protego`, not the standard library's
+  `robotparser` -- stdlib only implements the original 1996 spec and
+  silently ignores the `*`/`$` wildcard syntax that most real enterprise
+  robots.txt files now depend on. It also fetches robots.txt itself rather
+  than letting a library fetch it internally, so it correctly distinguishes
+  a 401/403 from bot-management (we can't confirm the real policy) from a
+  genuine rules-based block.
 
 ## Running locally
 

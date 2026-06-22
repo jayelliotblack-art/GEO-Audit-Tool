@@ -16,6 +16,8 @@ adjust -- this is exactly the kind of curation that should run through your
 judgment, not mine.
 """
 
+import urllib.robotparser
+
 # Required vs. recommended properties per schema type, for rich-result
 # eligibility. Keys match the @type string as it appears in JSON-LD.
 PRIORITY_TYPES = {
@@ -94,34 +96,26 @@ def check_required_fields(item, type_name):
     return missing_required, missing_recommended
 
 
-def check_ai_crawler_access(robots_txt):
-    """Parses robots.txt text and returns a list of AI crawler user-agents
-    that are explicitly disallowed from the whole site (Disallow: /)."""
-    if not robots_txt:
+def check_ai_crawler_access(robots_txt, sample_urls):
+    """For each known AI crawler, checks whether it would be blocked from
+    the URLs we actually tried to scan -- not just a blanket 'Disallow: /'
+    pattern. Real robots.txt files on larger sites usually block through
+    many specific path rules rather than a single root-level disallow, and
+    a bot with no explicit rule of its own falls through to whatever the
+    '*' wildcard rule says. urllib.robotparser already implements that
+    precedence correctly, so we lean on it directly rather than re-deriving
+    it with string matching.
+
+    A bot is reported as 'blocked' if it can't fetch ANY of the sampled
+    URLs -- mirroring the same all-or-nothing situation our own crawler may
+    have just hit."""
+    if not robots_txt or not sample_urls:
         return []
 
     blocked = []
-    current_agents = []
-    for raw_line in robots_txt.splitlines():
-        line = raw_line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        key = key.strip().lower()
-        value = value.strip()
-
-        if key == "user-agent":
-            if value == "*":
-                current_agents = ["*"]
-            else:
-                current_agents = [value]
-        elif key == "disallow" and value in ("/", ""):
-            for agent in current_agents:
-                if agent == "*":
-                    blocked.extend(AI_CRAWLER_USER_AGENTS)
-                elif agent in AI_CRAWLER_USER_AGENTS:
-                    blocked.append(agent)
-
-    return sorted(set(blocked))
+    for bot in AI_CRAWLER_USER_AGENTS:
+        rp = urllib.robotparser.RobotFileParser()
+        rp.parse(robots_txt.splitlines())
+        if not any(rp.can_fetch(bot, url) for url in sample_urls):
+            blocked.append(bot)
+    return blocked

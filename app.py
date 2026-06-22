@@ -50,10 +50,11 @@ def scan():
         return render_template("index.html", error=f"No URLs found in {domain}'s sitemap.")
 
     urls_to_scan = urls[:MAX_URLS]
-    crawl_results, skipped_by_robots = fetch_pages(urls_to_scan, domain)
-    report = build_report(domain, crawl_results)
+    crawl_results, skipped_by_robots, robots_access_denied = fetch_pages(urls_to_scan, domain)
+    report = build_report(domain, crawl_results, urls_to_scan)
     report["urls_found_total"] = len(urls)
     report["skipped_by_robots"] = skipped_by_robots
+    report["robots_access_denied"] = robots_access_denied
 
     return render_template("report.html", report=report)
 
