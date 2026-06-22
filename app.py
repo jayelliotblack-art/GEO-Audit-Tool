@@ -18,7 +18,8 @@ from scorer import build_report
 
 app = Flask(__name__)
 
-MAX_URLS = 25  # raise this once the core pipeline is proven on real sites
+MAX_URLS = 50  # raised from 25 now that the pipeline's proven against real sites;
+# this needs gunicorn's timeout raised to match -- see README
 
 
 def _normalize_domain(raw):

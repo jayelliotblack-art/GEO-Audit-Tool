@@ -11,7 +11,7 @@ know whether 40/30/30 is the right split.
 
 import requests
 
-from extractor import extract_json_ld, get_types
+from extractor import extract_json_ld, extract_microdata, get_types
 from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
@@ -56,24 +56,34 @@ def build_report(domain, crawl_results):
             })
             continue
 
-        items = extract_json_ld(page["html"])
-        if items:
+        json_ld_items = extract_json_ld(page["html"])
+        microdata_items = extract_microdata(page["html"], page["url"])
+
+        entities = []
+        for item in json_ld_items:
+            for type_name in get_types(item):
+                entities.append({"type": type_name, "format": "json-ld", "properties": item})
+        for m in microdata_items:
+            entities.append({"type": m["type"], "format": "microdata", "properties": m["properties"]})
+
+        if entities:
             pages_with_schema += 1
 
         item_reports = []
-        for item in items:
-            for type_name in get_types(item):
-                missing_required, missing_recommended = check_required_fields(item, type_name)
-                is_recognized = (known_types is None) or (type_name in known_types)
-                if type_name in GEO_SIGNAL_TYPES:
-                    geo_signal_count += 1
-                item_reports.append({
-                    "type": type_name,
-                    "recognized": is_recognized,
-                    "docs_url": docs_url_for(type_name),
-                    "missing_required": missing_required,
-                    "missing_recommended": missing_recommended,
-                })
+        for entity in entities:
+            type_name = entity["type"]
+            missing_required, missing_recommended = check_required_fields(entity["properties"], type_name)
+            is_recognized = (known_types is None) or (type_name in known_types)
+            if type_name in GEO_SIGNAL_TYPES:
+                geo_signal_count += 1
+            item_reports.append({
+                "type": type_name,
+                "format": entity["format"],
+                "recognized": is_recognized,
+                "docs_url": docs_url_for(type_name),
+                "missing_required": missing_required,
+                "missing_recommended": missing_recommended,
+            })
 
         page_reports.append({
             "url": page["url"],

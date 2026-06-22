@@ -13,7 +13,7 @@ import requests
 
 USER_AGENT = "GEOAuditBot/0.1 (+https://github.com/; site auditing tool)"
 TIMEOUT = 10
-MAX_WORKERS = 6
+MAX_WORKERS = 10  # raised alongside MAX_URLS; threads are cheap while blocked on I/O
 
 
 def _robots_parser_for(domain):
