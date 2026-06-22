@@ -60,10 +60,21 @@
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
         {% endif %}
       </div>
-      <div class="stat {{ 'stat-good' if report.llms_txt_present else '' }}">
+      {% set llms_tier = 'good' if report.llms_txt_quality_pct >= 70 else ('warn' if report.llms_txt_quality_pct >= 40 else 'bad') %}
+      <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
         <span class="k">llms.txt:</span>
         {% if report.llms_txt_present %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Present</span>
+          <span class="v {{ llms_tier }}">
+            {% if llms_tier == 'good' %}
+              <svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {% else %}
+              <svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            {% endif %}
+            {{ report.llms_txt_quality_pct }}% quality
+          </span>
+          {% if report.llms_txt_notes %}
+            <div class="stat-note">{{ report.llms_txt_notes|join(', ') }}</div>
+          {% endif %}
         {% else %}
           <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
         {% endif %}

@@ -16,6 +16,8 @@ adjust -- this is exactly the kind of curation that should run through your
 judgment, not mine.
 """
 
+import re
+
 from protego import Protego
 
 # Required vs. recommended properties per schema type, for rich-result
@@ -184,3 +186,44 @@ def check_ai_crawler_access(robots_txt, sample_urls):
     score and the headline callout; classify_ai_crawler_access has the full
     detail this is derived from."""
     return [c["bot"] for c in classify_ai_crawler_access(robots_txt, sample_urls) if not c["allowed"]]
+
+
+def grade_llms_txt(content):
+    """Grades the actual content of an llms.txt file against the informal
+    convention (llmstxt.org): an H1 title, optionally a summary, then one or
+    more H2 sections of markdown links to the pages actually worth an AI
+    system reading. 'The file exists' tells you nothing about whether it's
+    useful -- a title with zero links is a stub, not a real llms.txt.
+
+    Returns (score_0_100, notes). notes is a short list of what's missing,
+    shown in the UI so 'present but useless' and 'present and well-formed'
+    don't look identical."""
+    if not content or not content.strip():
+        return 0, ["File is empty"]
+
+    notes = []
+    score = 0
+
+    if re.search(r"^#\s+\S", content, re.MULTILINE):
+        score += 25
+    else:
+        notes.append("No H1 title")
+
+    links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", content)
+    score += min(len(links) * 5, 50)
+    if not links:
+        notes.append("No links found")
+    elif len(links) < 3:
+        notes.append(f"Only {len(links)} link(s) -- thin")
+
+    if re.search(r"^##\s+\S", content, re.MULTILINE):
+        score += 15
+    else:
+        notes.append("No section headers (##)")
+
+    if len(content.strip()) > 100:
+        score += 10
+    else:
+        notes.append("Very short file")
+
+    return min(score, 100), notes

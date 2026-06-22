@@ -188,6 +188,12 @@ a:focus-visible {
 .icon-muted { color: var(--ink-muted); }
 .statline .stat .v.warn { color: var(--warn); }
 .statline .stat .v.bad { color: var(--bad); }
+.stat-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+}
 
 .breakdown { margin-bottom: 28px; }
 .summary-block { margin-bottom: 28px; }

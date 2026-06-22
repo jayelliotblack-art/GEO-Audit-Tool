@@ -18,6 +18,7 @@ from geo_rules import (
     GEO_SIGNAL_TYPES,
     classify_ai_crawler_access,
     check_required_fields,
+    grade_llms_txt,
     is_fully_complete,
     item_completeness_pct,
 )
@@ -32,12 +33,15 @@ def _root(domain):
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
-def _check_llms_txt(domain):
+def _fetch_llms_txt(domain):
+    """Returns (present, content). content is '' if absent or unreachable."""
     try:
         resp = requests.get(f"{_root(domain)}/llms.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-        return resp.status_code == 200
+        if resp.status_code == 200:
+            return True, resp.text
     except requests.RequestException:
-        return False
+        pass
+    return False, ""
 
 
 def _check_robots(domain):
@@ -134,7 +138,8 @@ def build_report(domain, crawl_results, sampled_urls):
     robots_txt = _check_robots(domain)
     ai_crawler_breakdown = classify_ai_crawler_access(robots_txt, sampled_urls)
     blocked_crawlers = [c["bot"] for c in ai_crawler_breakdown if not c["allowed"]]
-    llms_txt_present = _check_llms_txt(domain)
+    llms_txt_present, llms_txt_content = _fetch_llms_txt(domain)
+    llms_txt_quality_pct, llms_txt_notes = grade_llms_txt(llms_txt_content) if llms_txt_present else (0, [])
 
     schema_coverage_pct = (pages_with_schema / total_pages * 100) if total_pages else 0
 
@@ -180,22 +185,28 @@ def build_report(domain, crawl_results, sampled_urls):
         # our crawler on every sampled URL). A score computed from zero data
         # is misleading, not just incomplete -- don't produce one.
         overall_score = None
+        noindex_score = None
     else:
-        # Five pillars rather than three. llms.txt gets a light 10% rather
-        # than being ignored or weighted heavily -- it's a real, displayed
-        # finding (inconsistent to show it prominently and let it affect
-        # nothing), but it's still an emerging, unofficial convention, and a
-        # genuinely well-optimized site shouldn't be punished hard for not
-        # having adopted something unproven yet. These weights are exactly
-        # the kind of call that should run through your judgment, not mine --
-        # adjust freely once you've seen this run against more real sites.
-        llms_score = 100 if llms_txt_present else 0
+        # noindex_score: % of scanned pages NOT told to stay out of the
+        # index. A noindexed page is invisible to engines regardless of how
+        # good its schema is -- arguably more severe than incomplete schema,
+        # so it gets real weight rather than a token one.
+        noindex_score = (total_pages - noindexed_count) / total_pages * 100
+
+        # Six pillars now. Schema coverage + quality stay at 25% each --
+        # schema markup is this tool's actual centerpiece, not an equal
+        # sixth among others. The remaining 50% splits evenly across four
+        # supporting signals rather than me arbitrarily ranking which of
+        # noindex/crawler-access/geo-signal/llms.txt-quality matters more --
+        # equal weight is the simpler, less arbitrary default until you've
+        # seen this run against enough real sites to argue for skewing it.
         overall_score = round(
             schema_coverage_pct * 0.25
             + schema_quality_pct * 0.25
-            + crawler_access_pct * 0.20
-            + geo_signal_score * 0.20
-            + llms_score * 0.10
+            + noindex_score * 0.125
+            + crawler_access_pct * 0.125
+            + geo_signal_score * 0.125
+            + llms_txt_quality_pct * 0.125
         )
 
     total_issues = required_issues + recommended_issues + unrecognized_issues
@@ -213,10 +224,13 @@ def build_report(domain, crawl_results, sampled_urls):
         "recommended_issues": recommended_issues,
         "unrecognized_issues": unrecognized_issues,
         "noindexed_count": noindexed_count,
+        "noindex_score": round(noindex_score) if noindex_score is not None else None,
         "blocked_ai_crawlers": blocked_crawlers,
         "ai_crawler_breakdown": ai_crawler_breakdown,
         "crawler_access_pct": round(crawler_access_pct),
         "llms_txt_present": llms_txt_present,
+        "llms_txt_quality_pct": round(llms_txt_quality_pct),
+        "llms_txt_notes": llms_txt_notes,
         "vocab_check_available": known_types is not None,
         "overall_score": overall_score,
         "pages": page_reports,
