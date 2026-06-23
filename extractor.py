@@ -1,131 +1,118 @@
 """
-extractor.py
+app.py
 
-Pulls structured data directly out of a page's HTML. Covers the two formats
-that matter in practice: JSON-LD (hand-rolled parsing below, validated
-against real sites) and microdata (via extruct, a well-maintained library --
-no reason to hand-roll a microdata parser when this exists). RDFa is
-deliberately out of scope for now; real-world adoption has dropped enough
-that it's a poor use of v1 effort.
+Entry point. Two routes: a form to enter a domain, and a results page that
+runs the actual scan.
+
+v1 deliberately runs synchronously and caps the number of pages scanned --
+see MAX_URLS below. That keeps the architecture simple (no job queue, no
+websockets) at the cost of a slower response on large sites. Worth revisiting
+once the core checks are proven out.
 """
 
 import json
-from urllib.parse import urljoin
+import re
 
-import extruct
-from bs4 import BeautifulSoup
+from flask import Flask, Response, jsonify, render_template, request
 
+from crawler import fetch_pages
+from pdf_export import generate_pdf
+from sitemap import get_sitemap_urls
+from scorer import build_report
+from summarizer import generate_summary
 
-def extract_json_ld(html):
-    """Returns a list of dicts, each a parsed JSON-LD object with at least
-    an '@type'. Handles scripts containing a single object, a list of
-    objects, or a @graph wrapper."""
-    if not html:
-        return []
+app = Flask(__name__)
 
-    soup = BeautifulSoup(html, "lxml")
-    blocks = soup.find_all("script", attrs={"type": "application/ld+json"})
-
-    items = []
-    for block in blocks:
-        if not block.string:
-            continue
-        try:
-            data = json.loads(block.string)
-        except (json.JSONDecodeError, TypeError):
-            continue  # malformed JSON-LD; this itself is worth flagging later
-
-        candidates = data if isinstance(data, list) else [data]
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
-                continue
-            if "@graph" in candidate and isinstance(candidate["@graph"], list):
-                items.extend(g for g in candidate["@graph"] if isinstance(g, dict))
-            else:
-                items.append(candidate)
-
-    return items
+MAX_URLS = 50  # raised from 25 now that the pipeline's proven against real sites;
+# this needs gunicorn's timeout raised to match -- see README
 
 
-def extract_microdata(html, url):
-    """Returns a list of {"type": str, "properties": dict} -- normalized to
-    the same shape regardless of source format so scorer.py doesn't need to
-    care which extraction path an entity came from."""
-    if not html:
-        return []
+def _normalize_domain(raw):
+    raw = raw.strip()
+    if not raw.startswith("http://") and not raw.startswith("https://"):
+        raw = "https://" + raw
+    return raw.rstrip("/")
 
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/scan", methods=["POST"])
+def scan():
+    raw_domain = request.form.get("domain", "")
+    if not raw_domain:
+        return render_template("index.html", error="Enter a domain to scan.")
+
+    domain = _normalize_domain(raw_domain)
+
+    urls, total_found, lastmod_by_url, sitemap_error = get_sitemap_urls(domain)
+    if sitemap_error:
+        return render_template("index.html", error=sitemap_error)
+
+    if not urls:
+        return render_template("index.html", error=f"No URLs found in {domain}'s sitemap.")
+
+    urls_to_scan = urls[:MAX_URLS]
+    crawl_results, skipped_by_robots, robots_access_denied = fetch_pages(urls_to_scan, domain)
+    report = build_report(domain, crawl_results, urls_to_scan, lastmod_by_url)
+    report["urls_found_total"] = total_found
+    report["skipped_by_robots"] = skipped_by_robots
+    report["robots_access_denied"] = robots_access_denied
+
+    # Trimmed subset sent to the optional AI-summary button -- aggregate
+    # stats only, not every page/URL, to keep the prompt (and its cost) small.
+    summary_data = {
+        "domain": report["domain"],
+        "overall_score": report["overall_score"],
+        "schema_coverage_pct": report["schema_coverage_pct"],
+        "pages_with_schema": report["pages_with_schema"],
+        "total_pages_scanned": report["total_pages_scanned"],
+        "schema_quality_pct": report["schema_quality_pct"],
+        "scoreable_complete": report["scoreable_complete"],
+        "scoreable_total": report["scoreable_total"],
+        "crawler_access_pct": report["crawler_access_pct"],
+        "blocked_ai_crawlers": report["blocked_ai_crawlers"],
+        "ai_crawler_breakdown": report["ai_crawler_breakdown"],
+        "llms_txt_present": report["llms_txt_present"],
+        "noindexed_count": report["noindexed_count"],
+        "canonical_issue_count": report["canonical_issue_count"],
+        "freshness_pct": report["freshness_pct"],
+        "freshness_median_age_days": report["freshness_median_age_days"],
+    }
+
+    return render_template("report.html", report=report, summary_data=summary_data)
+
+
+@app.route("/summarize", methods=["POST"])
+def summarize():
+    data = request.get_json(silent=True) or {}
+    summary, error = generate_summary(data)
+    if error:
+        return jsonify({"error": error}), 502
+    return jsonify({"summary": summary})
+
+
+@app.route("/download-pdf", methods=["POST"])
+def download_pdf():
     try:
-        data = extruct.extract(html, base_url=url, syntaxes=["microdata"])
-    except Exception:
-        return []  # a parsing failure here shouldn't take down the whole scan
+        report = json.loads(request.form.get("report_json", "{}"))
+    except json.JSONDecodeError:
+        return "Invalid report data", 400
 
-    results = []
-    for entry in data.get("microdata", []):
-        type_url = entry.get("type")
-        if not type_url:
-            continue
-        type_name = type_url.rstrip("/").rsplit("/", 1)[-1]
-        results.append({
-            "type": type_name,
-            "properties": entry.get("properties") or {},
-        })
-    return results
+    pdf_bytes = generate_pdf(report)
 
+    domain = report.get("domain", "report")
+    safe_name = re.sub(r"[^a-zA-Z0-9.-]+", "-", domain.replace("https://", "").replace("http://", "")).strip("-")
+    filename = f"geo-audit-{safe_name or 'report'}.pdf"
 
-def extract_meta_robots(html):
-    """Returns the lowercased content of <meta name="robots"> if present,
-    else None. A page can be fully allowed by robots.txt and still tell
-    crawlers not to index it via this tag -- a different, page-level signal
-    robots.txt has no way to show."""
-    if not html:
-        return None
-    soup = BeautifulSoup(html, "lxml")
-    tag = soup.find("meta", attrs={"name": lambda v: bool(v) and v.lower() == "robots"})
-    if tag and tag.get("content"):
-        return tag["content"].strip().lower()
-    return None
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
-def is_noindexed(meta_robots_content):
-    """meta_robots_content is the raw, comma-separated directive string
-    (e.g. 'noindex, nofollow'). Checks specifically for 'noindex' as its own
-    directive, not just a substring -- avoids a false match on some
-    hypothetical future directive that merely contains those letters."""
-    if not meta_robots_content:
-        return False
-    directives = [d.strip() for d in meta_robots_content.split(",")]
-    return "noindex" in directives
-
-
-def extract_canonical(html, page_url):
-    """Returns a list of resolved canonical URLs found on the page (relative
-    hrefs resolved against page_url). A well-formed page has exactly one;
-    returning all of them rather than just the first lets the caller flag
-    the 'more than one canonical tag' case, which is itself a real bug --
-    browsers and engines just pick one arbitrarily when that happens."""
-    if not html:
-        return []
-    soup = BeautifulSoup(html, "lxml")
-    tags = soup.find_all("link", rel=True)
-    hrefs = []
-    for tag in tags:
-        rel = tag.get("rel")
-        rel_values = rel if isinstance(rel, list) else [rel]
-        if any(r and r.lower() == "canonical" for r in rel_values):
-            href = tag.get("href")
-            if href:
-                hrefs.append(urljoin(page_url, href.strip()))
-    return hrefs
-
-
-def get_types(item):
-    """@type can be a string or a list of strings. Normalize to a list,
-    dropping any malformed entries that aren't plain strings (some sites'
-    JSON-LD has @type as a nested object, which would otherwise blow up a
-    dict lookup downstream)."""
-    t = item.get("@type")
-    if t is None:
-        return []
-    candidates = t if isinstance(t, list) else [t]
-    return [c for c in candidates if isinstance(c, str)]
-
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

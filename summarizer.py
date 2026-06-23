@@ -1,66 +1,290 @@
 """
-summarizer.py
+scorer.py
 
-Optional feature: turns the aggregate scan stats into a short, plain-English
-summary using the Anthropic API. Triggered on-demand (a button), not run
-automatically on every scan -- there's no reason to spend money generating
-a summary nobody asked to see.
+Aggregates per-page structured data findings into one site-level report.
 
-NOT free. Real but small: at Claude Haiku rates (the cheapest, fastest
-model, and plenty for a structured summary like this), a call here costs
-roughly $0.001 -- a tenth of a cent. Trivial at low volume, but a real line
-item if this ever gets meaningful traffic.
-
-Requires an ANTHROPIC_API_KEY environment variable set on the server (e.g.
-in Render's dashboard, not in this code). The rest of the app works fine
-without it -- this feature just returns a clear error instead of a summary.
+The score is a simple, transparent v1 heuristic -- not an industry-standard
+metric. Treat the weighting below as a draft for you to adjust once you see
+it run against a few real sites; you have the actual audit experience to
+know whether 40/30/30 is the right split.
 """
 
-import os
+import requests
+from urllib.parse import urlparse
 
-import anthropic
+from extractor import (
+    extract_canonical,
+    extract_json_ld,
+    extract_meta_robots,
+    extract_microdata,
+    get_types,
+    is_noindexed,
+    parse_html,
+)
+from geo_rules import (
+    AI_CRAWLER_USER_AGENTS,
+    GEO_SIGNAL_TYPES,
+    assess_freshness,
+    classify_ai_crawler_access,
+    classify_canonical,
+    check_required_fields,
+    grade_llms_txt,
+    is_fully_complete,
+    item_completeness_pct,
+)
+from schema_vocab import docs_url_for, load_vocab
 
-MODEL = "claude-haiku-4-5-20251001"
-MAX_TOKENS = 300
-
-
-def _build_prompt(data):
-    blocked = data.get("blocked_ai_crawlers") or []
-    breakdown = data.get("ai_crawler_breakdown") or []
-    explicit_allowed = [c["bot"] for c in breakdown if c.get("allowed") and c.get("explicit")]
-    explicit_blocked = [c["bot"] for c in breakdown if not c.get("allowed") and c.get("explicit")]
-
-    return f"""You're summarizing a GEO/AEO (generative/AI engine optimization) structured-data audit for {data.get('domain')}, for someone who'll paste this into a client report or internal update. Write 3-5 plain-English sentences: lead with the headline takeaway, name the strongest finding, name the single most actionable gap. No headers, no bullet points, no filler -- just prose a busy person can use directly.
-
-Data:
-- Overall score: {data.get('overall_score')}/100
-- Schema coverage: {data.get('schema_coverage_pct')}% of scanned pages have some structured data ({data.get('pages_with_schema')}/{data.get('total_pages_scanned')} pages)
-- Schema quality: {data.get('schema_quality_pct')}% of detected schema entities are fully complete, no missing required or recommended fields ({data.get('scoreable_complete')}/{data.get('scoreable_total')})
-- AI crawler access: {data.get('crawler_access_pct')}% of tracked AI crawlers can access the site; blocked: {', '.join(blocked) if blocked else 'none'}
-- Explicitly allow-listed AI crawlers (a deliberate GEO decision): {', '.join(explicit_allowed) if explicit_allowed else 'none'}
-- Explicitly blocked AI crawlers (a deliberate exclusion): {', '.join(explicit_blocked) if explicit_blocked else 'none'}
-- llms.txt present: {data.get('llms_txt_present')}
-- Noindexed pages found: {data.get('noindexed_count')}
-- Canonical tag issues found: {data.get('canonical_issue_count')}
-- Content freshness: median age {data.get('freshness_median_age_days')} days (None means not enough reliable lastmod data to judge)
-"""
+USER_AGENT = "GEOAuditBot/0.1 (+https://github.com/; site auditing tool)"
+TIMEOUT = 10
 
 
-def generate_summary(data):
-    """Returns (summary_text, error). error is None on success, otherwise a
-    human-readable string safe to show in the UI."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return None, "ANTHROPIC_API_KEY isn't set on the server -- this feature needs that configured first."
+def _root(domain):
+    parsed = urlparse(domain)
+    return f"{parsed.scheme}://{parsed.netloc}"
 
+
+def _fetch_llms_txt(domain):
+    """Returns (present, content). content is '' if absent or unreachable."""
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            messages=[{"role": "user", "content": _build_prompt(data)}],
+        resp = requests.get(f"{_root(domain)}/llms.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        if resp.status_code == 200:
+            return True, resp.text
+    except requests.RequestException:
+        pass
+    return False, ""
+
+
+def _check_robots(domain):
+    try:
+        resp = requests.get(f"{_root(domain)}/robots.txt", headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        return resp.text if resp.status_code == 200 else ""
+    except requests.RequestException:
+        return ""
+
+
+def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
+    known_types, _ = load_vocab()  # None, None if the live fetch failed
+    lastmod_by_url = lastmod_by_url or {}
+
+    # Pass 1: extract everything per-page, including canonical hrefs (not
+    # yet classified) and a url_health map -- canonical classification needs
+    # to know whether the TARGET page is noindexed/broken, which we can only
+    # know once every page in this scan has been processed once.
+    page_data = []
+    url_health = {}
+    pages_with_schema = 0
+    geo_signal_count = 0
+    scoreable_total = 0
+    scoreable_complete = 0
+    weighted_completeness_sum = 0.0
+    weighted_completeness_count = 0
+    noindexed_count = 0
+    required_issues = 0
+    recommended_issues = 0
+    unrecognized_issues = 0
+
+    for page in crawl_results:
+        if page["error"] or not page["html"]:
+            page_data.append({
+                "url": page["url"],
+                "error": page["error"] or f"HTTP {page['status_code']}",
+                "schema_items": [],
+                "noindexed": False,
+                "canonical_urls": [],
+            })
+            url_health[page["url"].rstrip("/")] = {"noindexed": False, "error": page_data[-1]["error"]}
+            continue
+
+        soup = parse_html(page["html"])
+        meta_robots = extract_meta_robots(soup)
+        noindexed = is_noindexed(meta_robots)
+        if noindexed:
+            noindexed_count += 1
+        canonical_urls = extract_canonical(soup, page["url"])
+        url_health[page["url"].rstrip("/")] = {"noindexed": noindexed, "error": None}
+
+        json_ld_items = extract_json_ld(soup)
+        microdata_items = extract_microdata(page["html"], page["url"])
+
+        entities = []
+        for item in json_ld_items:
+            for type_name in get_types(item):
+                entities.append({"type": type_name, "format": "json-ld", "properties": item})
+        for m in microdata_items:
+            entities.append({"type": m["type"], "format": "microdata", "properties": m["properties"]})
+
+        if entities:
+            pages_with_schema += 1
+
+        item_reports = []
+        for entity in entities:
+            type_name = entity["type"]
+            missing_required, missing_recommended = check_required_fields(entity["properties"], type_name)
+            is_recognized = (known_types is None) or (type_name in known_types)
+            if type_name in GEO_SIGNAL_TYPES:
+                geo_signal_count += 1
+            complete = is_fully_complete(missing_required, missing_recommended, type_name)
+            if complete is not None:
+                scoreable_total += 1
+                if complete:
+                    scoreable_complete += 1
+
+            weighted_pct = item_completeness_pct(missing_required, missing_recommended, type_name)
+            if weighted_pct is not None:
+                weighted_completeness_sum += weighted_pct
+                weighted_completeness_count += 1
+
+            required_issues += len(missing_required)
+            recommended_issues += len(missing_recommended)
+            if not is_recognized:
+                unrecognized_issues += 1
+
+            item_reports.append({
+                "type": type_name,
+                "format": entity["format"],
+                "recognized": is_recognized,
+                "docs_url": docs_url_for(type_name),
+                "missing_required": missing_required,
+                "missing_recommended": missing_recommended,
+            })
+
+        page_data.append({
+            "url": page["url"],
+            "error": None,
+            "schema_items": item_reports,
+            "noindexed": noindexed,
+            "canonical_urls": canonical_urls,
+        })
+
+    # Pass 2: classify each page's canonical now that url_health is complete.
+    page_reports = []
+    canonical_issue_count = 0
+    for pd in page_data:
+        canonical = classify_canonical(pd["url"], pd["canonical_urls"], url_health) if not pd["error"] else None
+        if canonical and canonical["status"] in ("multiple", "cross_domain"):
+            canonical_issue_count += 1
+        elif canonical and canonical["status"] == "other_page" and canonical["target_health"] and (
+            canonical["target_health"]["noindexed"] or canonical["target_health"]["error"]
+        ):
+            canonical_issue_count += 1
+        page_reports.append({
+            "url": pd["url"],
+            "error": pd["error"],
+            "schema_items": pd["schema_items"],
+            "noindexed": pd["noindexed"],
+            "canonical": canonical,
+        })
+
+    total_pages = len(crawl_results)
+    robots_txt = _check_robots(domain)
+    ai_crawler_breakdown = classify_ai_crawler_access(robots_txt, sampled_urls)
+    blocked_crawlers = [c["bot"] for c in ai_crawler_breakdown if not c["allowed"]]
+    llms_txt_present, llms_txt_content = _fetch_llms_txt(domain)
+    llms_txt_quality_pct, llms_txt_notes = grade_llms_txt(llms_txt_content) if llms_txt_present else (0, [])
+
+    schema_coverage_pct = (pages_with_schema / total_pages * 100) if total_pages else 0
+
+    total_bots = len(AI_CRAWLER_USER_AGENTS)
+    crawler_access_pct = (total_bots - len(blocked_crawlers)) / total_bots * 100
+    # Layer a small explicit/inherited modifier on top of the base allowed-
+    # vs-blocked percentage above. Inherited (default-robots.txt) outcomes
+    # get zero modifier either way -- a bot that happens to be allowed by a
+    # wildcard it was never specifically considered for is fine, not
+    # praiseworthy, and a bot blocked the same passive way is more likely an
+    # oversight than a deliberate stance. Explicit outcomes get a real
+    # modifier in both directions: a deliberate allow is a genuine GEO
+    # decision worth a small reward; a deliberate block is a bigger,
+    # 3x-weighted penalty, since actively shutting out AI crawlers is a more
+    # consequential call than the low-effort act of allow-listing one.
+    EXPLICIT_ALLOW_BONUS_MAX = 5
+    EXPLICIT_BLOCK_PENALTY_MAX = 15
+    explicit_allowed = sum(1 for c in ai_crawler_breakdown if c["allowed"] and c["explicit"])
+    explicit_blocked = sum(1 for c in ai_crawler_breakdown if not c["allowed"] and c["explicit"])
+    crawler_access_pct += (explicit_allowed / total_bots) * EXPLICIT_ALLOW_BONUS_MAX
+    crawler_access_pct -= (explicit_blocked / total_bots) * EXPLICIT_BLOCK_PENALTY_MAX
+    crawler_access_pct = max(0, min(100, crawler_access_pct))
+
+    geo_signal_score = min(geo_signal_count * 20, 100)  # crude: any GEO-type page is a strong positive signal
+    # The score that actually feeds overall_score: a weighted average where
+    # missing required fields cost full weight and missing recommended ones
+    # cost RECOMMENDED_WEIGHT as much (see geo_rules.item_completeness_pct).
+    # Same three-case structure as before for *why* this might be empty:
+    #   - schema exists, but none of it is a type we have a rule for -> no
+    #     basis to penalize, default to 100 (benefit of the doubt)
+    #   - no schema exists on the site at all -> there's nothing to BE
+    #     complete, defaulting to 100 here would claim "perfect" for a site
+    #     with literally zero structured data, which is the opposite of true
+    if weighted_completeness_count:
+        schema_quality_pct = weighted_completeness_sum / weighted_completeness_count
+    elif pages_with_schema:
+        schema_quality_pct = 100
+    else:
+        schema_quality_pct = 0
+
+    if total_pages == 0:
+        # No pages were actually scanned (almost always: robots.txt disallowed
+        # our crawler on every sampled URL). A score computed from zero data
+        # is misleading, not just incomplete -- don't produce one.
+        overall_score = None
+        noindex_score = None
+        freshness_pct = None
+        freshness_median_age = None
+        freshness_notes = []
+    else:
+        # noindex_score: % of scanned pages NOT told to stay out of the
+        # index. A noindexed page is invisible to engines regardless of how
+        # good its schema is -- arguably more severe than incomplete schema,
+        # so it gets real weight rather than a token one.
+        noindex_score = (total_pages - noindexed_count) / total_pages * 100
+
+        relevant_lastmod = {u: lastmod_by_url.get(u) for u in sampled_urls}
+        freshness_pct, freshness_median_age, freshness_notes = assess_freshness(relevant_lastmod)
+
+        # Seven pillars now. Schema coverage + quality stay the biggest
+        # share -- schema markup is this tool's actual centerpiece, not an
+        # equal slice among others. Freshness gets deliberately less than
+        # the other four supporting signals: lastmod is a noisier, less
+        # trustworthy signal in practice (see assess_freshness), so even
+        # though it's real, it shouldn't move the score as hard as something
+        # unambiguous like noindex. Trimmed evenly off the other six to make
+        # room for a genuinely "mild" 4% rather than bolting it on top.
+        overall_score = round(
+            schema_coverage_pct * 0.24
+            + schema_quality_pct * 0.24
+            + noindex_score * 0.12
+            + crawler_access_pct * 0.12
+            + geo_signal_score * 0.12
+            + llms_txt_quality_pct * 0.12
+            + freshness_pct * 0.04
         )
-        text = "".join(block.text for block in resp.content if block.type == "text")
-        return text.strip(), None
-    except Exception as exc:
-        return None, f"Couldn't generate a summary ({exc})"
+
+    total_issues = required_issues + recommended_issues + unrecognized_issues
+
+    return {
+        "domain": domain,
+        "total_pages_scanned": total_pages,
+        "pages_with_schema": pages_with_schema,
+        "schema_coverage_pct": round(schema_coverage_pct),
+        "schema_quality_pct": round(schema_quality_pct),
+        "scoreable_total": scoreable_total,
+        "scoreable_complete": scoreable_complete,
+        "total_issues": total_issues,
+        "required_issues": required_issues,
+        "recommended_issues": recommended_issues,
+        "unrecognized_issues": unrecognized_issues,
+        "noindexed_count": noindexed_count,
+        "noindex_score": round(noindex_score) if noindex_score is not None else None,
+        "canonical_issue_count": canonical_issue_count,
+        "freshness_pct": freshness_pct,
+        "freshness_median_age_days": freshness_median_age,
+        "freshness_notes": freshness_notes,
+        "blocked_ai_crawlers": blocked_crawlers,
+        "ai_crawler_breakdown": ai_crawler_breakdown,
+        "crawler_access_pct": round(crawler_access_pct),
+        "llms_txt_present": llms_txt_present,
+        "llms_txt_quality_pct": round(llms_txt_quality_pct),
+        "llms_txt_notes": llms_txt_notes,
+        "vocab_check_available": known_types is not None,
+        "overall_score": overall_score,
+        "pages": page_reports,
+    }

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.domain }} - schema audit</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="wrap-report">
+    <a class="back" href="/">&larr; new scan</a>
+    <div class="prompt">scan {{ report.domain }}</div>
+    <p class="domain">{{ report.domain }}</p>
+
+    {% if report.overall_score is none %}
+      <div class="callout">
+        {% if report.robots_access_denied %}
+          ! Couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. This says nothing about whether {{ report.domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
+        {% else %}
+          ! Couldn't scan any pages -- robots.txt's published rules disallowed this tool's crawler on all {{ report.skipped_by_robots }} sampled URL(s). The AI crawler access and llms.txt checks below don't depend on crawling and are still real; there's just nothing to show for the schema audit itself.
+        {% endif %}
+      </div>
+    {% else %}
+      {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
+      <div class="scoreblock {{ tier }}">
+        <div class="score">{{ report.overall_score }}/100</div>
+      </div>
+    {% endif %}
+
+    {% set coverage_tier = 'good' if report.schema_coverage_pct >= 70 else ('warn' if report.schema_coverage_pct >= 40 else 'bad') %}
+    {% set quality_tier = 'good' if report.schema_quality_pct >= 70 else ('warn' if report.schema_quality_pct >= 40 else 'bad') %}
+    {% set crawler_tier = 'good' if report.crawler_access_pct >= 70 else ('warn' if report.crawler_access_pct >= 40 else 'bad') %}
+    {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
+    {% set noindex_tier = 'bad' if report.noindexed_count > 0 else 'good' %}
+    {% set canonical_tier = 'bad' if report.canonical_issue_count > 0 else 'good' %}
+
+    <div class="statline">
+      <div class="stat">
+        <span class="k">Pages scanned:</span>
+        <span class="v">{{ report.total_pages_scanned }}/{{ report.urls_found_total }}</span>
+      </div>
+      <div class="stat stat-{{ coverage_tier }}">
+        <span class="k">Schema coverage:</span>
+        <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
+      </div>
+      <div class="stat stat-{{ quality_tier }}">
+        <span class="k">Schema quality:</span>
+        <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
+      </div>
+      <div class="stat stat-{{ issues_tier }}">
+        <span class="k">Issues found:</span>
+        <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
+      </div>
+      <div class="stat stat-{{ crawler_tier }}">
+        <span class="k">AI crawler access:</span>
+        {% if report.blocked_ai_crawlers %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
+        {% endif %}
+      </div>
+      {% set llms_tier = 'good' if report.llms_txt_quality_pct >= 70 else ('warn' if report.llms_txt_quality_pct >= 40 else 'bad') %}
+      <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
+        <span class="k">llms.txt:</span>
+        {% if report.llms_txt_present %}
+          <span class="v {{ llms_tier }}">
+            {% if llms_tier == 'good' %}
+              <svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {% else %}
+              <svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+            {% endif %}
+            {{ report.llms_txt_quality_pct }}% quality
+          </span>
+          {% if report.llms_txt_notes %}
+            <div class="stat-note">{{ report.llms_txt_notes|join(', ') }}</div>
+          {% endif %}
+        {% else %}
+          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
+        {% endif %}
+      </div>
+      <div class="stat stat-{{ noindex_tier }}">
+        <span class="k">Noindexed pages:</span>
+        {% if report.noindexed_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.noindexed_count }}</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+        {% endif %}
+      </div>
+      <div class="stat stat-{{ canonical_tier }}">
+        <span class="k">Canonical issues:</span>
+        {% if report.canonical_issue_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.canonical_issue_count }}</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+        {% endif %}
+        <div class="stat-note">Informational -- not yet scored</div>
+      </div>
+      {% if report.freshness_median_age_days is not none %}
+        {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
+        <div class="stat stat-{{ freshness_tier }}">
+          <span class="k">Content freshness:</span>
+          <span class="v {{ freshness_tier }}">{{ report.freshness_pct }}% (median {{ report.freshness_median_age_days }}d old)</span>
+        </div>
+      {% else %}
+        <div class="stat">
+          <span class="k">Content freshness:</span>
+          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not enough data</span>
+          {% if report.freshness_notes %}
+            <div class="stat-note">{{ report.freshness_notes|join(', ') }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if report.overall_score is not none %}
+    <div class="summary-block">
+      <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
+      <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
+        <input type="hidden" name="report_json" id="pdf-report-json">
+        <button type="submit" class="btn btn-secondary">$ download pdf</button>
+      </form>
+      <div id="summary-output"></div>
+    </div>
+    <script type="application/json" id="full-report-data">{{ report|tojson }}</script>
+    <script>
+      document.getElementById('pdf-form').addEventListener('submit', function () {
+        document.getElementById('pdf-report-json').value =
+          document.getElementById('full-report-data').textContent;
+      });
+    </script>
+    <script type="application/json" id="summary-data">{{ summary_data|tojson }}</script>
+    <script>
+      async function generateSummary() {
+        const btn = document.getElementById('summarize-btn');
+        const output = document.getElementById('summary-output');
+        const data = JSON.parse(document.getElementById('summary-data').textContent);
+        btn.disabled = true;
+        btn.textContent = 'generating...';
+        output.textContent = '';
+        output.className = '';
+        try {
+          const resp = await fetch('/summarize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+          });
+          const json = await resp.json();
+          if (json.error) {
+            output.textContent = '! ' + json.error;
+            output.className = 'error-text';
+          } else {
+            output.textContent = json.summary;
+          }
+        } catch (e) {
+          output.textContent = '! Something went wrong generating the summary.';
+          output.className = 'error-text';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '$ generate summary';
+        }
+      }
+    </script>
+    {% endif %}
+
+    <div class="breakdown">
+      <div class="breakdown-label">AI crawler breakdown</div>
+      {% for c in report.ai_crawler_breakdown %}
+        {% if c.allowed and c.explicit %}
+          <span class="tag type">{{ c.bot }} &middot; named &amp; allowed</span>
+        {% elif c.allowed and not c.explicit %}
+          <span class="tag type">{{ c.bot }} &middot; inherited, allowed</span>
+        {% elif not c.allowed and not c.explicit %}
+          <span class="tag recommended">{{ c.bot }} &middot; inherited, blocked</span>
+        {% else %}
+          <span class="tag missing">{{ c.bot }} &middot; named &amp; blocked</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if not report.vocab_check_available %}
+      <p class="note">Note: live schema.org vocabulary lookup wasn't reachable for this scan, so "unrecognized type" flags are skipped.</p>
+    {% endif %}
+
+    <table>
+      <thead>
+        <tr><th class="col-url">URL</th><th class="col-types">Schema types found</th><th class="col-issues">Issues</th></tr>
+      </thead>
+      <tbody>
+        {% for page in report.pages %}
+        <tr>
+          <td class="url"><a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a></td>
+          {% if page.error %}
+            <td colspan="2" class="muted">{{ page.error }}</td>
+          {% else %}
+            <td>
+              {% if not page.schema_items %}
+                <span class="muted">No structured data found</span>
+              {% else %}
+                {% for item in page.schema_items %}
+                  <a class="tag type" href="{{ item.docs_url }}" target="_blank" rel="noopener">{{ item.type }}<span style="opacity:.6"> &middot; {{ item.format }}</span></a>
+                {% endfor %}
+              {% endif %}
+            </td>
+            <td>
+              {% if page.noindexed %}
+                <span class="tag missing">Noindexed</span>
+              {% endif %}
+              {% if page.canonical %}
+                {% if page.canonical.status == 'multiple' %}
+                  <span class="tag missing">Multiple canonical tags</span>
+                {% elif page.canonical.status == 'cross_domain' %}
+                  <span class="tag recommended">Canonical &rarr; different domain</span>
+                {% elif page.canonical.status == 'missing' %}
+                  <span class="tag unrecognized">No canonical tag</span>
+                {% elif page.canonical.status == 'other_page' %}
+                  {% if page.canonical.target_health and page.canonical.target_health.noindexed %}
+                    <span class="tag missing">Canonical &rarr; noindexed page</span>
+                  {% elif page.canonical.target_health and page.canonical.target_health.error %}
+                    <span class="tag missing">Canonical &rarr; broken page</span>
+                  {% else %}
+                    <span class="tag unrecognized">Canonical &rarr; other page</span>
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+              {% for item in page.schema_items %}
+                {% for field in item.missing_required %}
+                  <span class="tag missing">Missing required: {{ field }}</span>
+                {% endfor %}
+                {% for field in item.missing_recommended %}
+                  <span class="tag recommended">Missing recommended: {{ field }}</span>
+                {% endfor %}
+                {% if not item.recognized %}
+                  <span class="tag unrecognized">Unrecognized type</span>
+                {% endif %}
+              {% endfor %}
+            </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="note">{{ report.skipped_by_robots }} URL(s) skipped due to robots.txt restrictions</p>
+  </div>
+</body>
+</html>
