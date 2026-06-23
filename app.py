@@ -25,15 +25,10 @@ from summarizer import generate_summary
 app = Flask(__name__)
 app.jinja_env.filters["urlpath"] = lambda u: urlparse(u).path or "/"
 
-MAX_URLS = 150  # raised from 100 now that fetch_pages streams results instead of
-# collecting them all before processing -- peak memory during the fetch
-# phase is bounded by concurrency (MAX_WORKERS), not by this number anymore.
-# Needs gunicorn's timeout raised to match -- see README. Still bounded by a
-# separate constraint that this change doesn't touch: WEB_CONCURRENCY=1 means
-# the entire app is unresponsive to every other visitor for the full duration
-# of a scan. Pushing this much higher starts trading "scans more of the site"
-# for "the app looks down to anyone else for minutes at a time" -- a real
-# architecture question (background jobs), not just a number to tune.
+MAX_URLS = 100  # rolled back from 150 -- that increase, stacked on top of an
+# unproven fix, led directly to a second OOM. Holding here until the
+# text-node-limit fix in extract_visible_text has real evidence behind it
+# before trying to raise this again.
 
 
 def _normalize_domain(raw):

@@ -154,6 +154,15 @@ def extract_internal_links(soup, page_url):
     return links
 
 
+MAX_TEXT_NODES = 4000  # bounds the cost of visible-text extraction on a very
+# long page (a 5,000-word blog post can easily have thousands of text nodes
+# once every inline tag boundary counts as a split). Using find_all's own
+# `limit` stops the tree walk early rather than walking everything and
+# truncating after -- the lazy-skip in scorer.py only helps when a page
+# DOESN'T have FAQPage/HowTo; this bounds the cost for when it does, which
+# is precisely the case that matters most for a GEO-optimized site.
+
+
 def extract_visible_text(soup):
     """Returns the page's visible text (script/style content excluded),
     normalized to lowercase with collapsed whitespace -- used to check
@@ -170,7 +179,7 @@ def extract_visible_text(soup):
         return ""
     body = soup.find("body") or soup
     texts = [
-        str(node) for node in body.find_all(string=True)
+        str(node) for node in body.find_all(string=True, limit=MAX_TEXT_NODES)
         if node.parent.name not in ("script", "style", "noscript")
     ]
     return normalize_for_match(" ".join(texts))
