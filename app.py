@@ -47,7 +47,7 @@ def scan():
 
     domain = _normalize_domain(raw_domain)
 
-    urls, total_found, sitemap_error = get_sitemap_urls(domain)
+    urls, total_found, lastmod_by_url, sitemap_error = get_sitemap_urls(domain)
     if sitemap_error:
         return render_template("index.html", error=sitemap_error)
 
@@ -56,7 +56,7 @@ def scan():
 
     urls_to_scan = urls[:MAX_URLS]
     crawl_results, skipped_by_robots, robots_access_denied = fetch_pages(urls_to_scan, domain)
-    report = build_report(domain, crawl_results, urls_to_scan)
+    report = build_report(domain, crawl_results, urls_to_scan, lastmod_by_url)
     report["urls_found_total"] = total_found
     report["skipped_by_robots"] = skipped_by_robots
     report["robots_access_denied"] = robots_access_denied
@@ -76,6 +76,10 @@ def scan():
         "blocked_ai_crawlers": report["blocked_ai_crawlers"],
         "ai_crawler_breakdown": report["ai_crawler_breakdown"],
         "llms_txt_present": report["llms_txt_present"],
+        "noindexed_count": report["noindexed_count"],
+        "canonical_issue_count": report["canonical_issue_count"],
+        "freshness_pct": report["freshness_pct"],
+        "freshness_median_age_days": report["freshness_median_age_days"],
     }
 
     return render_template("report.html", report=report, summary_data=summary_data)

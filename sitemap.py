@@ -31,19 +31,25 @@ def _fetch(url):
 
 
 def _parse_xml(content):
-    # Sitemaps use a default namespace; strip it so tag lookups are simple.
+    """Returns (tag, entries) where entries is a list of {"loc": str,
+    "lastmod": str_or_None} -- captures lastmod rather than discarding it,
+    since sitemaps often include it for free (no extra request) and it's
+    the basis for the content-freshness check."""
     root = ET.fromstring(content)
     tag = root.tag.split("}")[-1]
-    children = []
+    entries = []
     for child in root:
         loc = None
+        lastmod = None
         for sub in child:
             stag = sub.tag.split("}")[-1]
             if stag == "loc":
                 loc = sub.text.strip() if sub.text else None
+            elif stag == "lastmod":
+                lastmod = sub.text.strip() if sub.text else None
         if loc:
-            children.append(loc)
-    return tag, children  # tag is "sitemapindex" or "urlset"
+            entries.append({"loc": loc, "lastmod": lastmod})
+    return tag, entries  # tag is "sitemapindex" or "urlset"
 
 
 def _url_exists(url):
@@ -111,11 +117,13 @@ def discover_sitemap_url(domain):
 
 
 def get_sitemap_urls(domain):
-    """Returns (urls, total_found, error).
+    """Returns (urls, total_found, lastmod_by_url, error).
     - urls: page URLs queued for scanning, capped at MAX_URLS_TOTAL
     - total_found: the REAL count of page URLs actually encountered, before
       that cap -- this is what should be displayed as "X found", not the
       cap itself
+    - lastmod_by_url: {url: lastmod_str_or_None} for every url in `urls` --
+      captured for free while parsing, no extra requests
     - error: None on success, or a human-readable string
 
     Recurses through nested sitemap indexes at arbitrary depth (some sites
@@ -128,37 +136,43 @@ def get_sitemap_urls(domain):
     try:
         content = _fetch(sitemap_url)
     except requests.RequestException as exc:
-        return [], 0, f"Couldn't fetch a sitemap at {sitemap_url} ({exc})"
+        return [], 0, {}, f"Couldn't fetch a sitemap at {sitemap_url} ({exc})"
 
     try:
-        tag, locs = _parse_xml(content)
+        tag, entries = _parse_xml(content)
     except ET.ParseError as exc:
-        return [], 0, f"Sitemap at {sitemap_url} wasn't valid XML ({exc})"
+        return [], 0, {}, f"Sitemap at {sitemap_url} wasn't valid XML ({exc})"
 
     if tag != "sitemapindex":
-        # A normal, single-level sitemap -- every <loc> here is a real page.
-        total_found = len(locs)
-        return locs[:MAX_URLS_TOTAL], total_found, None
+        # A normal, single-level sitemap -- every entry here is a real page.
+        total_found = len(entries)
+        page_entries = entries[:MAX_URLS_TOTAL]
+        urls = [e["loc"] for e in page_entries]
+        lastmod_by_url = {e["loc"]: e["lastmod"] for e in page_entries}
+        return urls, total_found, lastmod_by_url, None
 
-    page_urls = []
+    page_entries = []
     visited = {sitemap_url}
-    queue = list(locs)
+    queue = [e["loc"] for e in entries]
     sitemaps_fetched = 0
 
-    while queue and sitemaps_fetched < MAX_SITEMAPS_TO_FOLLOW and len(page_urls) < MAX_URLS_TOTAL:
+    while queue and sitemaps_fetched < MAX_SITEMAPS_TO_FOLLOW and len(page_entries) < MAX_URLS_TOTAL:
         sub_url = queue.pop(0)
         if sub_url in visited:
             continue
         visited.add(sub_url)
         try:
             sub_content = _fetch(sub_url)
-            sub_tag, sub_locs = _parse_xml(sub_content)
+            sub_tag, sub_entries = _parse_xml(sub_content)
         except (requests.RequestException, ET.ParseError):
             continue
         sitemaps_fetched += 1
         if sub_tag == "sitemapindex":
-            queue.extend(sub_locs)  # another layer of nesting -- go deeper
+            queue.extend(e["loc"] for e in sub_entries)  # another layer of nesting -- go deeper
         else:
-            page_urls.extend(sub_locs)  # real pages
+            page_entries.extend(sub_entries)  # real pages
 
-    return page_urls[:MAX_URLS_TOTAL], len(page_urls), None
+    page_entries = page_entries[:MAX_URLS_TOTAL]
+    urls = [e["loc"] for e in page_entries]
+    lastmod_by_url = {e["loc"]: e["lastmod"] for e in page_entries}
+    return urls, len(page_entries), lastmod_by_url, None

@@ -40,6 +40,9 @@ Data:
 - Explicitly allow-listed AI crawlers (a deliberate GEO decision): {', '.join(explicit_allowed) if explicit_allowed else 'none'}
 - Explicitly blocked AI crawlers (a deliberate exclusion): {', '.join(explicit_blocked) if explicit_blocked else 'none'}
 - llms.txt present: {data.get('llms_txt_present')}
+- Noindexed pages found: {data.get('noindexed_count')}
+- Canonical tag issues found: {data.get('canonical_issue_count')}
+- Content freshness: median age {data.get('freshness_median_age_days')} days (None means not enough reliable lastmod data to judge)
 """
 
 

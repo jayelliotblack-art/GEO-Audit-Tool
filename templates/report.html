@@ -34,6 +34,7 @@
     {% set crawler_tier = 'good' if report.crawler_access_pct >= 70 else ('warn' if report.crawler_access_pct >= 40 else 'bad') %}
     {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
     {% set noindex_tier = 'bad' if report.noindexed_count > 0 else 'good' %}
+    {% set canonical_tier = 'bad' if report.canonical_issue_count > 0 else 'good' %}
 
     <div class="statline">
       <div class="stat">
@@ -87,6 +88,30 @@
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
         {% endif %}
       </div>
+      <div class="stat stat-{{ canonical_tier }}">
+        <span class="k">Canonical issues:</span>
+        {% if report.canonical_issue_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.canonical_issue_count }}</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+        {% endif %}
+        <div class="stat-note">Informational -- not yet scored</div>
+      </div>
+      {% if report.freshness_median_age_days is not none %}
+        {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
+        <div class="stat stat-{{ freshness_tier }}">
+          <span class="k">Content freshness:</span>
+          <span class="v {{ freshness_tier }}">{{ report.freshness_pct }}% (median {{ report.freshness_median_age_days }}d old)</span>
+        </div>
+      {% else %}
+        <div class="stat">
+          <span class="k">Content freshness:</span>
+          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not enough data</span>
+          {% if report.freshness_notes %}
+            <div class="stat-note">{{ report.freshness_notes|join(', ') }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
     </div>
 
     {% if report.overall_score is not none %}
@@ -181,6 +206,23 @@
             <td>
               {% if page.noindexed %}
                 <span class="tag missing">Noindexed</span>
+              {% endif %}
+              {% if page.canonical %}
+                {% if page.canonical.status == 'multiple' %}
+                  <span class="tag missing">Multiple canonical tags</span>
+                {% elif page.canonical.status == 'cross_domain' %}
+                  <span class="tag recommended">Canonical &rarr; different domain</span>
+                {% elif page.canonical.status == 'missing' %}
+                  <span class="tag unrecognized">No canonical tag</span>
+                {% elif page.canonical.status == 'other_page' %}
+                  {% if page.canonical.target_health and page.canonical.target_health.noindexed %}
+                    <span class="tag missing">Canonical &rarr; noindexed page</span>
+                  {% elif page.canonical.target_health and page.canonical.target_health.error %}
+                    <span class="tag missing">Canonical &rarr; broken page</span>
+                  {% else %}
+                    <span class="tag unrecognized">Canonical &rarr; other page</span>
+                  {% endif %}
+                {% endif %}
               {% endif %}
               {% for item in page.schema_items %}
                 {% for field in item.missing_required %}

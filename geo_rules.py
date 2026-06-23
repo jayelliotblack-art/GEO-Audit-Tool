@@ -17,6 +17,8 @@ judgment, not mine.
 """
 
 import re
+from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from protego import Protego
 
@@ -132,6 +134,91 @@ def check_required_fields(item, type_name):
     missing_required = [f for f in rule["required"] if f not in item]
     missing_recommended = [f for f in rule["recommended"] if f not in item]
     return missing_required, missing_recommended
+
+
+def _normalize_url(url):
+    return url.rstrip("/")
+
+
+def classify_canonical(page_url, canonical_urls, url_health):
+    """canonical_urls: hrefs found on this page via extractor.extract_canonical.
+    url_health: {normalized_url: {'noindexed': bool, 'error': str_or_None}}
+    for every OTHER page in this same scan -- this is the part a single-page
+    checker can't do. A canonical pointing at a page that's noindexed or
+    broken is a much more useful finding than just 'points elsewhere.'
+
+    Returns {'status': str, 'target': str_or_list_or_None, 'target_health': dict_or_None}
+    status: 'missing' | 'multiple' | 'self' | 'cross_domain' | 'other_page'
+    """
+    if not canonical_urls:
+        return {"status": "missing", "target": None, "target_health": None}
+    if len(canonical_urls) > 1:
+        return {"status": "multiple", "target": canonical_urls, "target_health": None}
+
+    target = canonical_urls[0]
+    if _normalize_url(target) == _normalize_url(page_url):
+        return {"status": "self", "target": target, "target_health": None}
+    if urlparse(target).netloc != urlparse(page_url).netloc:
+        return {"status": "cross_domain", "target": target, "target_health": None}
+
+    health = url_health.get(_normalize_url(target))
+    return {"status": "other_page", "target": target, "target_health": health}
+
+
+def _parse_lastmod(value):
+    """Parses a sitemap lastmod value (W3C datetime -- date-only or full
+    datetime, optionally 'Z'-suffixed) into a tz-aware datetime. Returns
+    None on anything malformed rather than raising; bad lastmod values
+    exist in the wild and shouldn't break a scan."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def assess_freshness(lastmod_by_url):
+    """Returns (freshness_pct, median_age_days_or_None, notes).
+
+    Defaults to a neutral 100 -- benefit of the doubt, not a penalty -- in
+    two cases:
+      - too little lastmod data to judge confidently (fewer than 5 values)
+      - the dates are suspiciously uniform, the classic signature of a
+        sitemap generator stamping every URL with when the FILE was
+        regenerated rather than each page's real last-changed date.
+        Scoring that as genuine freshness rewards bad data; scoring it as
+        staleness unfairly punishes a site for how its CMS happens to work.
+        Only confident, varied data should actually move the score.
+    """
+    parsed = [d for d in (_parse_lastmod(v) for v in lastmod_by_url.values()) if d is not None]
+
+    if len(parsed) < 5:
+        return 100, None, ["Not enough lastmod data to assess freshness"]
+
+    unique_dates = {d.date() for d in parsed}
+    if len(unique_dates) / len(parsed) < 0.15:
+        return 100, None, [
+            "lastmod dates are suspiciously uniform -- likely reflects "
+            "sitemap regeneration time, not real content updates"
+        ]
+
+    now = datetime.now(timezone.utc)
+    ages_days = sorted((now - d).days for d in parsed)
+    median_age = ages_days[len(ages_days) // 2]
+
+    # Linear scale: fresh (<=90 days) -> 100, very stale (>=730 days/2yr) -> 0
+    freshness_pct = max(0, min(100, 100 - (median_age - 90) / (730 - 90) * 100))
+    notes = []
+    if median_age > 365:
+        notes.append(f"Median age {median_age} days -- over a year since last update")
+    return round(freshness_pct), median_age, notes
 
 
 def _explicitly_named_agents(robots_txt):

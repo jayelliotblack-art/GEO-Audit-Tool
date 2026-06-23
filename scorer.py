@@ -12,11 +12,20 @@ know whether 40/30/30 is the right split.
 import requests
 from urllib.parse import urlparse
 
-from extractor import extract_json_ld, extract_meta_robots, extract_microdata, get_types, is_noindexed
+from extractor import (
+    extract_canonical,
+    extract_json_ld,
+    extract_meta_robots,
+    extract_microdata,
+    get_types,
+    is_noindexed,
+)
 from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
+    assess_freshness,
     classify_ai_crawler_access,
+    classify_canonical,
     check_required_fields,
     grade_llms_txt,
     is_fully_complete,
@@ -52,10 +61,16 @@ def _check_robots(domain):
         return ""
 
 
-def build_report(domain, crawl_results, sampled_urls):
+def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
     known_types, _ = load_vocab()  # None, None if the live fetch failed
+    lastmod_by_url = lastmod_by_url or {}
 
-    page_reports = []
+    # Pass 1: extract everything per-page, including canonical hrefs (not
+    # yet classified) and a url_health map -- canonical classification needs
+    # to know whether the TARGET page is noindexed/broken, which we can only
+    # know once every page in this scan has been processed once.
+    page_data = []
+    url_health = {}
     pages_with_schema = 0
     geo_signal_count = 0
     scoreable_total = 0
@@ -69,18 +84,22 @@ def build_report(domain, crawl_results, sampled_urls):
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
-            page_reports.append({
+            page_data.append({
                 "url": page["url"],
                 "error": page["error"] or f"HTTP {page['status_code']}",
                 "schema_items": [],
                 "noindexed": False,
+                "canonical_urls": [],
             })
+            url_health[page["url"].rstrip("/")] = {"noindexed": False, "error": page_data[-1]["error"]}
             continue
 
         meta_robots = extract_meta_robots(page["html"])
         noindexed = is_noindexed(meta_robots)
         if noindexed:
             noindexed_count += 1
+        canonical_urls = extract_canonical(page["html"], page["url"])
+        url_health[page["url"].rstrip("/")] = {"noindexed": noindexed, "error": None}
 
         json_ld_items = extract_json_ld(page["html"])
         microdata_items = extract_microdata(page["html"], page["url"])
@@ -127,11 +146,31 @@ def build_report(domain, crawl_results, sampled_urls):
                 "missing_recommended": missing_recommended,
             })
 
-        page_reports.append({
+        page_data.append({
             "url": page["url"],
             "error": None,
             "schema_items": item_reports,
             "noindexed": noindexed,
+            "canonical_urls": canonical_urls,
+        })
+
+    # Pass 2: classify each page's canonical now that url_health is complete.
+    page_reports = []
+    canonical_issue_count = 0
+    for pd in page_data:
+        canonical = classify_canonical(pd["url"], pd["canonical_urls"], url_health) if not pd["error"] else None
+        if canonical and canonical["status"] in ("multiple", "cross_domain"):
+            canonical_issue_count += 1
+        elif canonical and canonical["status"] == "other_page" and canonical["target_health"] and (
+            canonical["target_health"]["noindexed"] or canonical["target_health"]["error"]
+        ):
+            canonical_issue_count += 1
+        page_reports.append({
+            "url": pd["url"],
+            "error": pd["error"],
+            "schema_items": pd["schema_items"],
+            "noindexed": pd["noindexed"],
+            "canonical": canonical,
         })
 
     total_pages = len(crawl_results)
@@ -186,6 +225,9 @@ def build_report(domain, crawl_results, sampled_urls):
         # is misleading, not just incomplete -- don't produce one.
         overall_score = None
         noindex_score = None
+        freshness_pct = None
+        freshness_median_age = None
+        freshness_notes = []
     else:
         # noindex_score: % of scanned pages NOT told to stay out of the
         # index. A noindexed page is invisible to engines regardless of how
@@ -193,20 +235,25 @@ def build_report(domain, crawl_results, sampled_urls):
         # so it gets real weight rather than a token one.
         noindex_score = (total_pages - noindexed_count) / total_pages * 100
 
-        # Six pillars now. Schema coverage + quality stay at 25% each --
-        # schema markup is this tool's actual centerpiece, not an equal
-        # sixth among others. The remaining 50% splits evenly across four
-        # supporting signals rather than me arbitrarily ranking which of
-        # noindex/crawler-access/geo-signal/llms.txt-quality matters more --
-        # equal weight is the simpler, less arbitrary default until you've
-        # seen this run against enough real sites to argue for skewing it.
+        relevant_lastmod = {u: lastmod_by_url.get(u) for u in sampled_urls}
+        freshness_pct, freshness_median_age, freshness_notes = assess_freshness(relevant_lastmod)
+
+        # Seven pillars now. Schema coverage + quality stay the biggest
+        # share -- schema markup is this tool's actual centerpiece, not an
+        # equal slice among others. Freshness gets deliberately less than
+        # the other four supporting signals: lastmod is a noisier, less
+        # trustworthy signal in practice (see assess_freshness), so even
+        # though it's real, it shouldn't move the score as hard as something
+        # unambiguous like noindex. Trimmed evenly off the other six to make
+        # room for a genuinely "mild" 4% rather than bolting it on top.
         overall_score = round(
-            schema_coverage_pct * 0.25
-            + schema_quality_pct * 0.25
-            + noindex_score * 0.125
-            + crawler_access_pct * 0.125
-            + geo_signal_score * 0.125
-            + llms_txt_quality_pct * 0.125
+            schema_coverage_pct * 0.24
+            + schema_quality_pct * 0.24
+            + noindex_score * 0.12
+            + crawler_access_pct * 0.12
+            + geo_signal_score * 0.12
+            + llms_txt_quality_pct * 0.12
+            + freshness_pct * 0.04
         )
 
     total_issues = required_issues + recommended_issues + unrecognized_issues
@@ -225,6 +272,10 @@ def build_report(domain, crawl_results, sampled_urls):
         "unrecognized_issues": unrecognized_issues,
         "noindexed_count": noindexed_count,
         "noindex_score": round(noindex_score) if noindex_score is not None else None,
+        "canonical_issue_count": canonical_issue_count,
+        "freshness_pct": freshness_pct,
+        "freshness_median_age_days": freshness_median_age,
+        "freshness_notes": freshness_notes,
         "blocked_ai_crawlers": blocked_crawlers,
         "ai_crawler_breakdown": ai_crawler_breakdown,
         "crawler_access_pct": round(crawler_access_pct),

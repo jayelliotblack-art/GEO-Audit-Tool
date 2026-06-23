@@ -10,6 +10,7 @@ that it's a poor use of v1 effort.
 """
 
 import json
+from urllib.parse import urljoin
 
 import extruct
 from bs4 import BeautifulSoup
@@ -94,6 +95,27 @@ def is_noindexed(meta_robots_content):
         return False
     directives = [d.strip() for d in meta_robots_content.split(",")]
     return "noindex" in directives
+
+
+def extract_canonical(html, page_url):
+    """Returns a list of resolved canonical URLs found on the page (relative
+    hrefs resolved against page_url). A well-formed page has exactly one;
+    returning all of them rather than just the first lets the caller flag
+    the 'more than one canonical tag' case, which is itself a real bug --
+    browsers and engines just pick one arbitrarily when that happens."""
+    if not html:
+        return []
+    soup = BeautifulSoup(html, "lxml")
+    tags = soup.find_all("link", rel=True)
+    hrefs = []
+    for tag in tags:
+        rel = tag.get("rel")
+        rel_values = rel if isinstance(rel, list) else [rel]
+        if any(r and r.lower() == "canonical" for r in rel_values):
+            href = tag.get("href")
+            if href:
+                hrefs.append(urljoin(page_url, href.strip()))
+    return hrefs
 
 
 def get_types(item):
