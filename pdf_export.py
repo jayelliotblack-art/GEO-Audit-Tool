@@ -103,16 +103,16 @@ def generate_pdf(report):
     pdf.add_page()
 
     # -- Title --
-    pdf.set_font("Courier", "B", size=10)
+    pdf.set_font("Helvetica", "B", size=10)
     pdf.set_text_color(*GOOD)
-    pdf.cell(0, 6, "$ schema-audit", ln=True)
+    pdf.cell(0, 6, "GEO/AEO READINESS TEST", ln=True)
     pdf.set_font("Courier", "B", size=18)
     pdf.set_text_color(*INK)
     pdf.multi_cell(0, 9, _safe(report.get("root_domain") or report.get("domain", "")), ln=True)
     pdf.set_font("Helvetica", size=9)
     pdf.set_text_color(*INK_MUTED)
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    pdf.cell(0, 6, _safe(f"GEO/AEO structured data audit -- generated {generated}"), ln=True)
+    pdf.cell(0, 6, _safe(f"GEO/AEO Readiness Test -- generated {generated}"), ln=True)
     pdf.ln(4)
 
     # -- Score --

@@ -3,22 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GEO/AEO Schema Audit</title>
+  <title>GEO/AEO Readiness Test &mdash; see if AI engines can find and cite your site</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <div class="wrap">
-    <div class="prompt">schema-audit</div>
-    <h1>GEO / AEO structured data audit<span class="cursor" aria-hidden="true"></span></h1>
-    <p class="lede">Site-wide schema markup and AI-crawler accessibility, checked across the whole site -- not one page at a time.</p>
+
+  <section class="hero-section">
+    <div class="hero-eyebrow">GEO / AEO Readiness Test</div>
+    <h1>Is your site actually readable by AI?</h1>
+    <p class="hero-sub">
+      ChatGPT, Perplexity, and Google's AI Overviews don't browse your site the way a search engine does.
+      This free, site-wide scan checks the structured data, AI crawler permissions, and content signals
+      that determine whether AI systems can find, understand, and cite your content &mdash; not just one page, the whole site.
+    </p>
 
     <form action="/scan" method="post" id="scan-form">
-      <div class="cmdline">
-        <span class="label">$ scan</span>
-        <input type="text" name="domain" placeholder="example.com" required autofocus id="domain-input">
-        <button type="submit" id="scan-button">run &crarr;</button>
+      <div class="scan-bar">
+        <input type="text" name="domain" placeholder="yourdomain.com" required autofocus id="domain-input">
+        <button type="submit" id="scan-button">Run free scan</button>
       </div>
     </form>
 
@@ -28,16 +32,57 @@
     </div>
 
     {% if error %}
-      <p class="error">! {{ error }}</p>
+      <p class="error">{{ error }}</p>
     {% endif %}
 
-    <p class="note">scans up to 100 pages from the xml sitemap &middot; checks json-ld + microdata, ai crawler access in robots.txt, llms.txt quality, and noindex tags</p>
-  </div>
+    {% if not error %}
+      <p class="hero-reassurance">Free &middot; No signup &middot; Takes 1-2 minutes</p>
+    {% endif %}
+  </section>
+
+  <section class="features-section">
+    <h2 class="features-heading">What gets checked</h2>
+    <p class="features-subheading">
+      One scan, seven weighted signals. Every point in your score traces back to a specific, real finding -- not a black box.
+    </p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/></svg>
+        <h3>Structured data</h3>
+        <p>Validates your schema markup against schema.org and checks whether it's actually complete enough to earn rich results -- not just present.</p>
+      </div>
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>AI crawler access</h3>
+        <p>Checks whether GPTBot, ClaudeBot, PerplexityBot, and others are explicitly allowed in, blocked, or just along for the ride by accident.</p>
+      </div>
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><path d="M4 19h16M7 15l3-4 3 2 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3>Content health</h3>
+        <p>Flags stale content, orphan pages nothing links to, and schema that claims content your page doesn't actually contain.</p>
+      </div>
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 8l-2 4 2 4M19 8l2 4-2 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3>Indexability</h3>
+        <p>Catches noindex tags and canonical mistakes that quietly keep good pages out of search and AI results entirely.</p>
+      </div>
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v16H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>llms.txt &amp; standards</h3>
+        <p>Grades your llms.txt file against the real convention -- a title and zero links isn't the same as a useful one.</p>
+      </div>
+      <div class="feature-card">
+        <svg class="feature-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 8v4l2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <h3>One score, fully explained</h3>
+        <p>A single 0-100 score built from seven weighted signals, with every number traceable back to a real, visible finding.</p>
+      </div>
+    </div>
+  </section>
 
   <script>
     document.getElementById('scan-form').addEventListener('submit', function () {
       document.getElementById('scan-button').disabled = true;
-      document.getElementById('scan-button').textContent = 'scanning...';
+      document.getElementById('scan-button').textContent = 'Scanning...';
       // readOnly, not disabled -- disabled fields are excluded from the
       // submitted form data, which would wipe out the domain you just typed.
       document.getElementById('domain-input').readOnly = true;

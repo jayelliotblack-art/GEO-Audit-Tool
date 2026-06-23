@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ report.root_domain }} - schema audit</title>
+  <title>{{ report.root_domain }} &mdash; GEO/AEO Readiness Test</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -14,14 +14,14 @@
     <div class="dash-toolbar">
       <div>
         <a class="back" href="/">&larr; new scan</a>
-        <div class="prompt">scan {{ report.domain }}</div>
+        <div class="scan-target">Scanned {{ report.domain }}</div>
       </div>
       {% if report.overall_score is not none %}
       <div class="dash-toolbar-actions">
-        <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
+        <button id="summarize-btn" class="btn" onclick="generateSummary()">Generate summary</button>
         <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
           <input type="hidden" name="report_json" id="pdf-report-json">
-          <button type="submit" class="btn btn-secondary">$ download pdf</button>
+          <button type="submit" class="btn btn-secondary">Download PDF</button>
         </form>
       </div>
       {% endif %}
@@ -226,7 +226,7 @@
           output.className = 'error-text';
         } finally {
           btn.disabled = false;
-          btn.textContent = '$ generate summary';
+          btn.textContent = 'Generate summary';
         }
       }
     </script>

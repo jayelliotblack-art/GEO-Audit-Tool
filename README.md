@@ -1,4 +1,4 @@
-# GEO/AEO Schema Audit
+# GEO/AEO Readiness Test
 
 Site-wide structured data audit tool. Point it at a domain, it reads the
 XML sitemap, crawls the pages it finds, and reports on:
