@@ -87,6 +87,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
     recommended_issues = 0
     unrecognized_issues = 0
     truthfulness_issue_count = 0
+    truthfulness_flagged_urls = []
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
@@ -126,6 +127,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         if entities:
             pages_with_schema += 1
 
+        page_flagged_for_truthfulness = False
         item_reports = []
         for entity in entities:
             type_name = entity["type"]
@@ -155,7 +157,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
                 mismatches, total_claims = truthfulness
                 content_mismatch = {"mismatches": mismatches, "total": total_claims}
                 if mismatches / total_claims >= 0.5:
-                    truthfulness_issue_count += 1
+                    page_flagged_for_truthfulness = True
 
             item_reports.append({
                 "type": type_name,
@@ -166,6 +168,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
                 "missing_recommended": missing_recommended,
                 "content_mismatch": content_mismatch,
             })
+
+        if page_flagged_for_truthfulness:
+            truthfulness_issue_count += 1
+            truthfulness_flagged_urls.append(page["url"])
 
         page_data.append({
             "url": page["url"],
@@ -290,6 +296,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
 
     return {
         "domain": domain,
+        "root_domain": _root(domain),
         "total_pages_scanned": total_pages,
         "pages_with_schema": pages_with_schema,
         "schema_coverage_pct": round(schema_coverage_pct),
@@ -305,6 +312,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         "canonical_issue_count": canonical_issue_count,
         "orphan_count": orphan_count,
         "truthfulness_issue_count": truthfulness_issue_count,
+        "truthfulness_flagged_urls": truthfulness_flagged_urls,
         "freshness_pct": freshness_pct,
         "freshness_median_age_days": freshness_median_age,
         "freshness_notes": freshness_notes,

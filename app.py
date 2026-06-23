@@ -12,6 +12,7 @@ once the core checks are proven out.
 
 import json
 import re
+from urllib.parse import urlparse
 
 from flask import Flask, Response, jsonify, render_template, request
 
@@ -22,6 +23,7 @@ from scorer import build_report
 from summarizer import generate_summary
 
 app = Flask(__name__)
+app.jinja_env.filters["urlpath"] = lambda u: urlparse(u).path or "/"
 
 MAX_URLS = 50  # raised from 25 now that the pipeline's proven against real sites;
 # this needs gunicorn's timeout raised to match -- see README
@@ -64,7 +66,7 @@ def scan():
     # Trimmed subset sent to the optional AI-summary button -- aggregate
     # stats only, not every page/URL, to keep the prompt (and its cost) small.
     summary_data = {
-        "domain": report["domain"],
+        "domain": report["root_domain"],
         "overall_score": report["overall_score"],
         "schema_coverage_pct": report["schema_coverage_pct"],
         "pages_with_schema": report["pages_with_schema"],
@@ -103,7 +105,7 @@ def download_pdf():
 
     pdf_bytes = generate_pdf(report)
 
-    domain = report.get("domain", "report")
+    domain = report.get("root_domain") or report.get("domain", "report")
     safe_name = re.sub(r"[^a-zA-Z0-9.-]+", "-", domain.replace("https://", "").replace("http://", "")).strip("-")
     filename = f"geo-audit-{safe_name or 'report'}.pdf"
 

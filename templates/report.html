@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ report.domain }} - schema audit</title>
+  <title>{{ report.root_domain }} - schema audit</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -12,12 +12,12 @@
   <div class="wrap-report">
     <a class="back" href="/">&larr; new scan</a>
     <div class="prompt">scan {{ report.domain }}</div>
-    <p class="domain">{{ report.domain }}</p>
+    <p class="domain">{{ report.root_domain }}</p>
 
     {% if report.overall_score is none %}
       <div class="callout">
         {% if report.robots_access_denied %}
-          ! Couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. This says nothing about whether {{ report.domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
+          ! Couldn't read robots.txt itself -- the request was met with an access-denied response (401/403), most likely bot-management blocking us before any published rules were even evaluated. This says nothing about whether {{ report.root_domain }}'s actual policy allows crawling; it means we couldn't confirm either way.
         {% else %}
           ! Couldn't scan any pages -- robots.txt's published rules disallowed this tool's crawler on all {{ report.skipped_by_robots }} sampled URL(s). The AI crawler access and llms.txt checks below don't depend on crawling and are still real; there's just nothing to show for the schema audit itself.
         {% endif %}
@@ -112,6 +112,10 @@
         <span class="k">Schema truthfulness:</span>
         {% if report.truthfulness_issue_count > 0 %}
           <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.truthfulness_issue_count }} flagged</span>
+          <div class="stat-note">
+            {% for url in report.truthfulness_flagged_urls[:4] %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}
+            {% if report.truthfulness_flagged_urls|length > 4 %}, +{{ report.truthfulness_flagged_urls|length - 4 }} more{% endif %}
+          </div>
         {% else %}
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
         {% endif %}
@@ -249,7 +253,7 @@
               {% endif %}
               {% for item in page.schema_items %}
                 {% if item.content_mismatch and item.content_mismatch.mismatches / item.content_mismatch.total >= 0.5 %}
-                  <span class="tag recommended">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }})</span>
+                  <span class="tag missing">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }})</span>
                 {% endif %}
                 {% for field in item.missing_required %}
                   <span class="tag missing">Missing required: {{ field }}</span>

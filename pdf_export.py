@@ -108,7 +108,7 @@ def generate_pdf(report):
     pdf.cell(0, 6, "$ schema-audit", ln=True)
     pdf.set_font("Courier", "B", size=18)
     pdf.set_text_color(*INK)
-    pdf.multi_cell(0, 9, _safe(report.get("domain", "")), ln=True)
+    pdf.multi_cell(0, 9, _safe(report.get("root_domain") or report.get("domain", "")), ln=True)
     pdf.set_font("Helvetica", size=9)
     pdf.set_text_color(*INK_MUTED)
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
