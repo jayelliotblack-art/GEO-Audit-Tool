@@ -29,6 +29,25 @@
 
     <h1 class="domain">{{ report.root_domain }}</h1>
 
+    <form action="/scan" method="post" id="rescan-form">
+      <div class="rescan-bar">
+        <input type="text" name="domain" placeholder="Scan another domain..." required id="rescan-input">
+        <button type="submit" id="rescan-button">Run scan</button>
+      </div>
+    </form>
+    <div id="rescan-status" class="scan-status" style="display:none">
+      <span class="spinner" aria-hidden="true"></span>
+      Crawling up to 100 pages -- this usually takes 20-100 seconds depending on the site.
+    </div>
+    <script>
+      document.getElementById('rescan-form').addEventListener('submit', function () {
+        document.getElementById('rescan-button').disabled = true;
+        document.getElementById('rescan-button').textContent = 'Scanning...';
+        document.getElementById('rescan-input').readOnly = true;
+        document.getElementById('rescan-status').style.display = 'flex';
+      });
+    </script>
+
     {% if report.overall_score is none %}
       <div class="callout">
         {% if report.robots_access_denied %}
@@ -73,7 +92,7 @@
     {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
 
     <div class="stat-group">
-      <div class="group-pill">Schema</div>
+      <div class="group-pill pill-violet">Schema</div>
       <div class="statline">
         <div class="stat stat-{{ coverage_tier }}">
           <span class="k">Schema coverage:</span>
@@ -91,7 +110,7 @@
     </div>
 
     <div class="stat-group">
-      <div class="group-pill">Crawler &amp; index</div>
+      <div class="group-pill pill-cyan">Crawler &amp; index</div>
       <div class="statline">
         <div class="stat stat-{{ crawler_tier }}">
           <span class="k">AI crawler access:</span>
@@ -122,7 +141,7 @@
     </div>
 
     <div class="stat-group">
-      <div class="group-pill">Content health</div>
+      <div class="group-pill pill-green">Content health</div>
       <div class="statline">
         {% if report.freshness_median_age_days is not none %}
           <div class="stat stat-{{ freshness_tier }}">
@@ -138,6 +157,7 @@
             {% endif %}
           </div>
         {% endif %}
+        {% if report.sample_coverage_pct == 100 %}
         <div class="stat stat-{{ orphan_tier }}">
           <span class="k">Orphan pages:</span>
           {% if report.orphan_count > 0 %}
@@ -145,12 +165,9 @@
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
           {% endif %}
-          {% if report.sample_coverage_pct is not none and report.sample_coverage_pct < 40 %}
-            <div class="stat-note">Low confidence -- only {{ report.sample_coverage_pct }}% of the site was sampled, so most flags here likely just mean the linking page wasn't in the sample, not that the page is truly unlinked</div>
-          {% else %}
-            <div class="stat-note">No inbound links found within pages scanned -- not yet scored</div>
-          {% endif %}
+          <div class="stat-note">No inbound links found anywhere on the site -- not yet scored</div>
         </div>
+        {% endif %}
         <div class="stat stat-{{ truthfulness_tier }}">
           <span class="k">Schema truthfulness:</span>
           {% if report.truthfulness_issue_count > 0 %}
@@ -168,7 +185,7 @@
     </div>
 
     <div class="stat-group">
-      <div class="group-pill">Standards</div>
+      <div class="group-pill pill-amber">Standards</div>
       <div class="statline">
         <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
           <span class="k">llms.txt:</span>
@@ -275,7 +292,7 @@
               {% if page.noindexed %}
                 <span class="tag missing">Noindexed</span>
               {% endif %}
-              {% if page.is_orphan %}
+              {% if page.is_orphan and report.sample_coverage_pct == 100 %}
                 <span class="tag unrecognized">Orphan -- no inbound links found</span>
               {% endif %}
               {% if page.canonical %}

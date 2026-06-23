@@ -144,10 +144,14 @@ def generate_pdf(report):
         ("llms.txt", f"{report.get('llms_txt_quality_pct', 0)}% quality" if report.get("llms_txt_present") else "Absent", _tier(report.get("llms_txt_quality_pct")) if report.get("llms_txt_present") else INK_MUTED),
         ("Noindexed pages", str(report.get("noindexed_count", 0)), BAD if report.get("noindexed_count", 0) > 0 else GOOD),
         ("Canonical issues", str(report.get("canonical_issue_count", 0)), BAD if report.get("canonical_issue_count", 0) > 0 else GOOD),
-        ("Orphan pages", str(report.get("orphan_count", 0)), BAD if report.get("orphan_count", 0) > 0 else GOOD),
         ("Schema truthfulness", f"{report.get('truthfulness_issue_count', 0)} flagged", BAD if report.get("truthfulness_issue_count", 0) > 0 else GOOD),
         ("Content freshness", f"{report.get('freshness_pct')}% (median {report.get('freshness_median_age_days')}d)" if report.get("freshness_median_age_days") is not None else "Not enough data", _tier(report.get("freshness_pct")) if report.get("freshness_median_age_days") is not None else INK_MUTED),
     ]
+    # Orphan detection is only meaningful when the scan actually covered the
+    # entire site -- a partial sample isn't a basis for this finding, so it
+    # doesn't even appear here unless coverage was 100%, same as the live report.
+    if report.get("sample_coverage_pct") == 100:
+        stats.append(("Orphan pages", str(report.get("orphan_count", 0)), BAD if report.get("orphan_count", 0) > 0 else GOOD))
     col_w = (210 - 2 * PAGE_MARGIN) / 4
     row_h = 18
     start_y = pdf.get_y()
@@ -203,7 +207,7 @@ def generate_pdf(report):
                 row = table.row()
                 row.cell(_safe(page["url"]))
                 canon_note = _canonical_note(page.get("canonical"))
-                orphan_note = "Orphan" if page.get("is_orphan") else ""
+                orphan_note = "Orphan" if page.get("is_orphan") and report.get("sample_coverage_pct") == 100 else ""
                 if page.get("error"):
                     row.cell(_safe(page["error"]))
                     row.cell("")
