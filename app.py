@@ -10,9 +10,13 @@ websockets) at the cost of a slower response on large sites. Worth revisiting
 once the core checks are proven out.
 """
 
-from flask import Flask, jsonify, render_template, request
+import json
+import re
+
+from flask import Flask, Response, jsonify, render_template, request
 
 from crawler import fetch_pages
+from pdf_export import generate_pdf
 from sitemap import get_sitemap_urls
 from scorer import build_report
 from summarizer import generate_summary
@@ -84,6 +88,26 @@ def summarize():
     if error:
         return jsonify({"error": error}), 502
     return jsonify({"summary": summary})
+
+
+@app.route("/download-pdf", methods=["POST"])
+def download_pdf():
+    try:
+        report = json.loads(request.form.get("report_json", "{}"))
+    except json.JSONDecodeError:
+        return "Invalid report data", 400
+
+    pdf_bytes = generate_pdf(report)
+
+    domain = report.get("domain", "report")
+    safe_name = re.sub(r"[^a-zA-Z0-9.-]+", "-", domain.replace("https://", "").replace("http://", "")).strip("-")
+    filename = f"geo-audit-{safe_name or 'report'}.pdf"
+
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 if __name__ == "__main__":

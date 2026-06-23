@@ -90,12 +90,38 @@ h1 {
 }
 
 .cmdline button:hover { opacity: 0.85; }
+.cmdline button:disabled { opacity: 0.6; cursor: default; }
+.cmdline input:disabled { opacity: 0.6; }
 .cmdline button:focus-visible,
 .cmdline input:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--good);
   outline-offset: 2px;
 }
+
+.scan-status {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border: 2px solid var(--line);
+  border-top-color: var(--good);
+  border-radius: 50%;
+  display: inline-block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spinner { animation: spin 0.8s linear infinite; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .cursor {
   display: inline-block;
@@ -210,6 +236,12 @@ a:focus-visible {
 .btn:hover { opacity: 0.85; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+.btn-secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  margin-left: 8px;
+}
 #summary-output:not(:empty) {
   font-family: var(--sans);
   font-size: 14px;

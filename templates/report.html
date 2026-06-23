@@ -92,8 +92,19 @@
     {% if report.overall_score is not none %}
     <div class="summary-block">
       <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
+      <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
+        <input type="hidden" name="report_json" id="pdf-report-json">
+        <button type="submit" class="btn btn-secondary">$ download pdf</button>
+      </form>
       <div id="summary-output"></div>
     </div>
+    <script type="application/json" id="full-report-data">{{ report|tojson }}</script>
+    <script>
+      document.getElementById('pdf-form').addEventListener('submit', function () {
+        document.getElementById('pdf-report-json').value =
+          document.getElementById('full-report-data').textContent;
+      });
+    </script>
     <script type="application/json" id="summary-data">{{ summary_data|tojson }}</script>
     <script>
       async function generateSummary() {

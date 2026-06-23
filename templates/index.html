@@ -14,19 +14,33 @@
     <h1>GEO / AEO structured data audit<span class="cursor" aria-hidden="true"></span></h1>
     <p class="lede">Site-wide schema markup and AI-crawler accessibility, checked across the whole site -- not one page at a time.</p>
 
-    <form action="/scan" method="post">
+    <form action="/scan" method="post" id="scan-form">
       <div class="cmdline">
         <span class="label">$ scan</span>
-        <input type="text" name="domain" placeholder="example.com" required autofocus>
-        <button type="submit">run &crarr;</button>
+        <input type="text" name="domain" placeholder="example.com" required autofocus id="domain-input">
+        <button type="submit" id="scan-button">run &crarr;</button>
       </div>
     </form>
+
+    <div id="scan-status" class="scan-status" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      Crawling up to 50 pages -- this usually takes 10-60 seconds depending on the site.
+    </div>
 
     {% if error %}
       <p class="error">! {{ error }}</p>
     {% endif %}
 
-    <p class="note">scans up to 50 pages from the xml sitemap &middot; checks json-ld + microdata, ai crawler access in robots.txt, and llms.txt presence</p>
+    <p class="note">scans up to 50 pages from the xml sitemap &middot; checks json-ld + microdata, ai crawler access in robots.txt, llms.txt quality, and noindex tags</p>
   </div>
+
+  <script>
+    document.getElementById('scan-form').addEventListener('submit', function () {
+      document.getElementById('scan-button').disabled = true;
+      document.getElementById('scan-button').textContent = 'scanning...';
+      document.getElementById('domain-input').disabled = true;
+      document.getElementById('scan-status').hidden = false;
+    });
+  </script>
 </body>
 </html>
