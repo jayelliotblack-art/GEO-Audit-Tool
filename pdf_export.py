@@ -139,7 +139,7 @@ def generate_pdf(report):
         ("Pages scanned", f"{report.get('total_pages_scanned', 0)}/{report.get('urls_found_total', 0)}", None),
         ("Schema coverage", f"{report.get('schema_coverage_pct', 0)}% ({report.get('pages_with_schema', 0)})", _tier(report.get("schema_coverage_pct"))),
         ("Schema quality", f"{report.get('schema_quality_pct', 0)}%", _tier(report.get("schema_quality_pct"))),
-        ("Issues found", f"{report.get('total_issues', 0)} ({report.get('required_issues', 0)} req, {report.get('recommended_issues', 0)} rec)", BAD if report.get("required_issues", 0) > 0 else (WARN if report.get("total_issues", 0) > 0 else GOOD)),
+        ("Issues found", f"{report.get('total_issues', 0)} ({report.get('required_issues', 0)} req, {report.get('recommended_issues', 0)} rec" + (f", {report.get('unrecognized_issues', 0)} unrec" if report.get("unrecognized_issues", 0) > 0 else "") + ")", BAD if report.get("required_issues", 0) > 0 else (WARN if report.get("total_issues", 0) > 0 else GOOD)),
         ("AI crawler access", f"{report.get('crawler_access_pct', 0)}%", _tier(report.get("crawler_access_pct"))),
         ("llms.txt", f"{report.get('llms_txt_quality_pct', 0)}% quality" if report.get("llms_txt_present") else "Absent", _tier(report.get("llms_txt_quality_pct")) if report.get("llms_txt_present") else INK_MUTED),
         ("Noindexed pages", str(report.get("noindexed_count", 0)), BAD if report.get("noindexed_count", 0) > 0 else GOOD),

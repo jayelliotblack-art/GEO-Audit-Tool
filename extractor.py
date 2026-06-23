@@ -161,7 +161,10 @@ def extract_canonical(soup, page_url):
         if any(r and r.lower() == "canonical" for r in rel_values):
             href = tag.get("href")
             if href:
-                hrefs.append(urljoin(page_url, href.strip()))
+                try:
+                    hrefs.append(urljoin(page_url, href.strip()))
+                except ValueError:
+                    continue  # malformed href (stray brackets, unresolved CMS token, etc.) -- skip it
     return hrefs
 
 
@@ -179,9 +182,12 @@ def extract_internal_links(soup, page_url):
         href = tag["href"].strip()
         if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
-        resolved = urljoin(page_url, href)
-        if urlparse(resolved).netloc == domain:
-            links.add(resolved.rstrip("/"))
+        try:
+            resolved = urljoin(page_url, href)
+            if urlparse(resolved).netloc == domain:
+                links.add(resolved.rstrip("/"))
+        except ValueError:
+            continue  # malformed href -- a real page on the live web hit this (see extract_canonical above)
     return links
 
 

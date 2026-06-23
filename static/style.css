@@ -366,7 +366,57 @@ a:focus-visible {
   padding: 14px 18px;
   flex: 1 1 280px;
   max-width: 480px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.08s ease;
 }
+.statline .stat:hover { border-color: rgba(255, 255, 255, 0.35); }
+.statline .stat:active { transform: scale(0.99); }
+.statline .stat.active { border-color: var(--accent); }
+.statline .stat:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.detail-panel {
+  display: none;
+  margin-top: 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--accent);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+}
+.detail-panel.open { display: block; animation: detail-reveal 0.16s ease-out; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes detail-reveal {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+.detail-content { display: none; }
+.detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.detail-title { font-family: var(--display); font-size: 17px; font-weight: 600; color: #fff; }
+.detail-close {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13px;
+  flex: none;
+  padding: 2px 6px;
+}
+.detail-close:hover { color: #fff; }
+.detail-section { margin-bottom: 12px; }
+.detail-section:last-child { margin-bottom: 0; }
+.detail-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 5px;
+}
+.detail-body { font-size: 14px; color: var(--ink); line-height: 1.6; }
+.detail-body code { font-family: var(--mono); background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
 .stat-note { max-width: 100%; }
 .statline .stat.stat-good { box-shadow: 0 0 28px -8px var(--good-glow); border-color: rgba(52, 232, 160, 0.3); }
 .statline .stat.stat-warn { box-shadow: 0 0 28px -8px var(--warn-glow); border-color: rgba(255, 184, 77, 0.3); }

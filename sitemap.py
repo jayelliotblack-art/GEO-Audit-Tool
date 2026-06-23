@@ -100,10 +100,14 @@ def discover_sitemap_url(domain):
             ]
             if subfolder:
                 locale_segment = subfolder.strip("/")
-                locale_match = next(
-                    (s for s in sitemap_lines if locale_segment in urlparse(s).path.strip("/").split("/")),
-                    None,
-                )
+                locale_match = None
+                for s in sitemap_lines:
+                    try:
+                        if locale_segment in urlparse(s).path.strip("/").split("/"):
+                            locale_match = s
+                            break
+                    except ValueError:
+                        continue  # malformed Sitemap: line -- skip it, don't crash the scan
                 if locale_match:
                     return locale_match
             if sitemap_lines:
