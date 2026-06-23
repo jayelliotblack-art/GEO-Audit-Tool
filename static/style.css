@@ -91,7 +91,7 @@ h1 {
 
 .cmdline button:hover { opacity: 0.85; }
 .cmdline button:disabled { opacity: 0.6; cursor: default; }
-.cmdline input:disabled { opacity: 0.6; }
+.cmdline input:read-only { opacity: 0.6; }
 .cmdline button:focus-visible,
 .cmdline input:focus-visible,
 a:focus-visible {
@@ -101,7 +101,6 @@ a:focus-visible {
 
 .scan-status {
   margin-top: 16px;
-  display: flex;
   align-items: center;
   gap: 9px;
   font-family: var(--mono);

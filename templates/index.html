@@ -22,7 +22,7 @@
       </div>
     </form>
 
-    <div id="scan-status" class="scan-status" hidden>
+    <div id="scan-status" class="scan-status" style="display:none">
       <span class="spinner" aria-hidden="true"></span>
       Crawling up to 50 pages -- this usually takes 10-60 seconds depending on the site.
     </div>
@@ -38,8 +38,10 @@
     document.getElementById('scan-form').addEventListener('submit', function () {
       document.getElementById('scan-button').disabled = true;
       document.getElementById('scan-button').textContent = 'scanning...';
-      document.getElementById('domain-input').disabled = true;
-      document.getElementById('scan-status').hidden = false;
+      // readOnly, not disabled -- disabled fields are excluded from the
+      // submitted form data, which would wipe out the domain you just typed.
+      document.getElementById('domain-input').readOnly = true;
+      document.getElementById('scan-status').style.display = 'flex';
     });
   </script>
 </body>
