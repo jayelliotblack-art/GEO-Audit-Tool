@@ -143,7 +143,9 @@ def generate_pdf(report):
         ("AI crawler access", f"{report.get('crawler_access_pct', 0)}%", _tier(report.get("crawler_access_pct"))),
         ("llms.txt", f"{report.get('llms_txt_quality_pct', 0)}% quality" if report.get("llms_txt_present") else "Absent", _tier(report.get("llms_txt_quality_pct")) if report.get("llms_txt_present") else INK_MUTED),
         ("Noindexed pages", str(report.get("noindexed_count", 0)), BAD if report.get("noindexed_count", 0) > 0 else GOOD),
-        ("Canonical issues", f"{report.get('canonical_issue_count', 0)} (informational)", BAD if report.get("canonical_issue_count", 0) > 0 else GOOD),
+        ("Canonical issues", str(report.get("canonical_issue_count", 0)), BAD if report.get("canonical_issue_count", 0) > 0 else GOOD),
+        ("Orphan pages", str(report.get("orphan_count", 0)), BAD if report.get("orphan_count", 0) > 0 else GOOD),
+        ("Schema truthfulness", f"{report.get('truthfulness_issue_count', 0)} flagged", BAD if report.get("truthfulness_issue_count", 0) > 0 else GOOD),
         ("Content freshness", f"{report.get('freshness_pct')}% (median {report.get('freshness_median_age_days')}d)" if report.get("freshness_median_age_days") is not None else "Not enough data", _tier(report.get("freshness_pct")) if report.get("freshness_median_age_days") is not None else INK_MUTED),
     ]
     col_w = (210 - 2 * PAGE_MARGIN) / 4
@@ -201,21 +203,29 @@ def generate_pdf(report):
                 row = table.row()
                 row.cell(_safe(page["url"]))
                 canon_note = _canonical_note(page.get("canonical"))
+                orphan_note = "Orphan" if page.get("is_orphan") else ""
                 if page.get("error"):
                     row.cell(_safe(page["error"]))
                     row.cell("")
                 elif not page.get("schema_items"):
-                    notes = ([] if not page.get("noindexed") else ["Noindexed"]) + ([] if not canon_note else [canon_note])
+                    notes = [n for n in [
+                        "Noindexed" if page.get("noindexed") else "",
+                        orphan_note,
+                        canon_note,
+                    ] if n]
                     row.cell("None found")
                     row.cell(_safe(", ".join(notes)))
                 else:
                     types = ", ".join(item["type"] for item in page["schema_items"])
-                    issues = []
-                    if page.get("noindexed"):
-                        issues.append("Noindexed")
-                    if canon_note:
-                        issues.append(canon_note)
+                    issues = [n for n in [
+                        "Noindexed" if page.get("noindexed") else "",
+                        orphan_note,
+                        canon_note,
+                    ] if n]
                     for item in page["schema_items"]:
+                        mismatch = item.get("content_mismatch")
+                        if mismatch and mismatch["total"] and mismatch["mismatches"] / mismatch["total"] >= 0.5:
+                            issues.append(f"{item['type']} content not found ({mismatch['mismatches']}/{mismatch['total']})")
                         issues += [f"Missing: {f}" for f in item.get("missing_required", [])]
                         issues += [f"Recommended: {f}" for f in item.get("missing_recommended", [])]
                     row.cell(_safe(types))

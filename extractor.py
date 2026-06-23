@@ -19,7 +19,8 @@ no public API to feed it a pre-parsed tree.)
 """
 
 import json
-from urllib.parse import urljoin
+import re
+from urllib.parse import urljoin, urlparse
 
 import extruct
 from bs4 import BeautifulSoup
@@ -131,6 +132,64 @@ def extract_canonical(soup, page_url):
             if href:
                 hrefs.append(urljoin(page_url, href.strip()))
     return hrefs
+
+
+def extract_internal_links(soup, page_url):
+    """Returns the set of resolved, same-domain link targets found via
+    <a href> on this page (trailing slash stripped for comparison). Skips
+    non-navigational hrefs (anchors, mailto, tel, javascript). Used to spot
+    orphan pages -- ones the sitemap lists but nothing else we scanned
+    actually links to."""
+    if soup is None:
+        return set()
+    domain = urlparse(page_url).netloc
+    links = set()
+    for tag in soup.find_all("a", href=True):
+        href = tag["href"].strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        resolved = urljoin(page_url, href)
+        if urlparse(resolved).netloc == domain:
+            links.add(resolved.rstrip("/"))
+    return links
+
+
+def extract_visible_text(soup):
+    """Returns the page's visible text (script/style content excluded),
+    normalized to lowercase with collapsed whitespace -- used to check
+    whether schema-claimed content (e.g. an FAQPage's questions) actually
+    appears on the page, rather than just being asserted in markup.
+
+    Deliberately non-destructive: walks text nodes and skips ones whose
+    parent is <script>/<style>/<noscript>, rather than decompose()-ing those
+    tags out of the tree. This same soup object is shared with
+    extract_json_ld elsewhere in the pipeline -- mutating it here would
+    delete the very <script type="application/ld+json"> tags that function
+    still needs to read."""
+    if soup is None:
+        return ""
+    body = soup.find("body") or soup
+    texts = [
+        str(node) for node in body.find_all(string=True)
+        if node.parent.name not in ("script", "style", "noscript")
+    ]
+    return normalize_for_match(" ".join(texts))
+
+
+_PUNCT_MAP = {
+    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+    "\u2013": "-", "\u2014": "-", "\u2026": "...",
+}
+
+
+def normalize_for_match(text):
+    """Shared normalization for both the visible-page text and schema-claimed
+    text, so typographic differences (curly vs. straight quotes, en/em
+    dashes) don't cause a false 'not found on page' mismatch."""
+    text = str(text)
+    for fancy, plain in _PUNCT_MAP.items():
+        text = text.replace(fancy, plain)
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
 def get_types(item):

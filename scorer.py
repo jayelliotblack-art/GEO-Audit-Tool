@@ -14,9 +14,11 @@ from urllib.parse import urlparse
 
 from extractor import (
     extract_canonical,
+    extract_internal_links,
     extract_json_ld,
     extract_meta_robots,
     extract_microdata,
+    extract_visible_text,
     get_types,
     is_noindexed,
     parse_html,
@@ -28,6 +30,7 @@ from geo_rules import (
     classify_ai_crawler_access,
     classify_canonical,
     check_required_fields,
+    check_schema_truthfulness,
     grade_llms_txt,
     is_fully_complete,
     item_completeness_pct,
@@ -72,6 +75,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
     # know once every page in this scan has been processed once.
     page_data = []
     url_health = {}
+    linked_urls = set()
     pages_with_schema = 0
     geo_signal_count = 0
     scoreable_total = 0
@@ -82,6 +86,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
     required_issues = 0
     recommended_issues = 0
     unrecognized_issues = 0
+    truthfulness_issue_count = 0
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
@@ -102,6 +107,11 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             noindexed_count += 1
         canonical_urls = extract_canonical(soup, page["url"])
         url_health[page["url"].rstrip("/")] = {"noindexed": noindexed, "error": None}
+
+        page_url_norm = page["url"].rstrip("/")
+        page_links = extract_internal_links(soup, page["url"])
+        linked_urls.update(page_links - {page_url_norm})  # a page linking to itself shouldn't un-orphan it
+        visible_text = extract_visible_text(soup)
 
         json_ld_items = extract_json_ld(soup)
         microdata_items = extract_microdata(page["html"], page["url"])
@@ -139,6 +149,14 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             if not is_recognized:
                 unrecognized_issues += 1
 
+            truthfulness = check_schema_truthfulness(entity["properties"], type_name, visible_text)
+            content_mismatch = None
+            if truthfulness is not None:
+                mismatches, total_claims = truthfulness
+                content_mismatch = {"mismatches": mismatches, "total": total_claims}
+                if mismatches / total_claims >= 0.5:
+                    truthfulness_issue_count += 1
+
             item_reports.append({
                 "type": type_name,
                 "format": entity["format"],
@@ -146,6 +164,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
                 "docs_url": docs_url_for(type_name),
                 "missing_required": missing_required,
                 "missing_recommended": missing_recommended,
+                "content_mismatch": content_mismatch,
             })
 
         page_data.append({
@@ -156,9 +175,12 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             "canonical_urls": canonical_urls,
         })
 
-    # Pass 2: classify each page's canonical now that url_health is complete.
+    # Pass 2: classify each page's canonical now that url_health is complete,
+    # and check orphan status now that linked_urls is complete (both need
+    # every page processed once before they can be evaluated).
     page_reports = []
     canonical_issue_count = 0
+    orphan_count = 0
     for pd in page_data:
         canonical = classify_canonical(pd["url"], pd["canonical_urls"], url_health) if not pd["error"] else None
         if canonical and canonical["status"] in ("multiple", "cross_domain"):
@@ -167,12 +189,18 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             canonical["target_health"]["noindexed"] or canonical["target_health"]["error"]
         ):
             canonical_issue_count += 1
+
+        is_orphan = (not pd["error"]) and (pd["url"].rstrip("/") not in linked_urls)
+        if is_orphan:
+            orphan_count += 1
+
         page_reports.append({
             "url": pd["url"],
             "error": pd["error"],
             "schema_items": pd["schema_items"],
             "noindexed": pd["noindexed"],
             "canonical": canonical,
+            "is_orphan": is_orphan,
         })
 
     total_pages = len(crawl_results)
@@ -275,6 +303,8 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         "noindexed_count": noindexed_count,
         "noindex_score": round(noindex_score) if noindex_score is not None else None,
         "canonical_issue_count": canonical_issue_count,
+        "orphan_count": orphan_count,
+        "truthfulness_issue_count": truthfulness_issue_count,
         "freshness_pct": freshness_pct,
         "freshness_median_age_days": freshness_median_age,
         "freshness_notes": freshness_notes,

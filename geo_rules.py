@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 
 from protego import Protego
 
+from extractor import normalize_for_match
+
 # Required vs. recommended properties per schema type, for rich-result
 # eligibility. Keys match the @type string as it appears in JSON-LD.
 PRIORITY_TYPES = {
@@ -219,6 +221,43 @@ def assess_freshness(lastmod_by_url):
     if median_age > 365:
         notes.append(f"Median age {median_age} days -- over a year since last update")
     return round(freshness_pct), median_age, notes
+
+
+def check_schema_truthfulness(properties, type_name, visible_text):
+    """For FAQPage and HowTo specifically -- types where the schema claims
+    content (questions, steps) that should genuinely appear on the page,
+    not just describe it abstractly. Markup asserting Q&A content that
+    isn't actually anywhere on the page is a known manipulation pattern
+    Google's own guidelines call out, and it's arguably worse for AEO than
+    having no markup: an answer engine citing a "Q&A" that doesn't really
+    exist on the page is a worse outcome than citing nothing.
+
+    Returns (mismatch_count, total_claims) or None if this type isn't one
+    we check, or there's nothing to check (e.g. an empty mainEntity).
+
+    IMPORTANT CAVEAT, surface this wherever this is shown: this only sees
+    the raw HTML response, not anything rendered by client-side JavaScript.
+    A site that hydrates its FAQ content via JS will show real content to
+    an actual visitor but look "missing" to this check -- a genuine
+    false-positive risk, not just a hypothetical one. Treat this as "worth
+    a human look," not a confirmed verdict."""
+    if type_name == "FAQPage":
+        main_entity = properties.get("mainEntity")
+        questions = main_entity if isinstance(main_entity, list) else ([main_entity] if main_entity else [])
+        claims = [q.get("name") for q in questions if isinstance(q, dict) and q.get("name")]
+    elif type_name == "HowTo":
+        steps = properties.get("step")
+        steps = steps if isinstance(steps, list) else ([steps] if steps else [])
+        claims = [s.get("name") or s.get("text") for s in steps if isinstance(s, dict)]
+        claims = [c for c in claims if c]
+    else:
+        return None
+
+    if not claims:
+        return None
+
+    mismatches = sum(1 for c in claims if normalize_for_match(c).rstrip("?!.") not in visible_text)
+    return mismatches, len(claims)
 
 
 def _explicitly_named_agents(robots_txt):

@@ -35,6 +35,8 @@
     {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
     {% set noindex_tier = 'bad' if report.noindexed_count > 0 else 'good' %}
     {% set canonical_tier = 'bad' if report.canonical_issue_count > 0 else 'good' %}
+    {% set orphan_tier = 'bad' if report.orphan_count > 0 else 'good' %}
+    {% set truthfulness_tier = 'bad' if report.truthfulness_issue_count > 0 else 'good' %}
 
     <div class="statline">
       <div class="stat">
@@ -96,6 +98,24 @@
           <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
         {% endif %}
         <div class="stat-note">Informational -- not yet scored</div>
+      </div>
+      <div class="stat stat-{{ orphan_tier }}">
+        <span class="k">Orphan pages:</span>
+        {% if report.orphan_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.orphan_count }}</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+        {% endif %}
+        <div class="stat-note">No inbound links found within pages scanned -- not yet scored</div>
+      </div>
+      <div class="stat stat-{{ truthfulness_tier }}">
+        <span class="k">Schema truthfulness:</span>
+        {% if report.truthfulness_issue_count > 0 %}
+          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.truthfulness_issue_count }} flagged</span>
+        {% else %}
+          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
+        {% endif %}
+        <div class="stat-note">Static HTML only, may false-positive on JS content -- not yet scored</div>
       </div>
       {% if report.freshness_median_age_days is not none %}
         {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
@@ -207,6 +227,9 @@
               {% if page.noindexed %}
                 <span class="tag missing">Noindexed</span>
               {% endif %}
+              {% if page.is_orphan %}
+                <span class="tag unrecognized">Orphan -- no inbound links found</span>
+              {% endif %}
               {% if page.canonical %}
                 {% if page.canonical.status == 'multiple' %}
                   <span class="tag missing">Multiple canonical tags</span>
@@ -225,6 +248,9 @@
                 {% endif %}
               {% endif %}
               {% for item in page.schema_items %}
+                {% if item.content_mismatch and item.content_mismatch.mismatches / item.content_mismatch.total >= 0.5 %}
+                  <span class="tag recommended">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }})</span>
+                {% endif %}
                 {% for field in item.missing_required %}
                   <span class="tag missing">Missing required: {{ field }}</span>
                 {% endfor %}
