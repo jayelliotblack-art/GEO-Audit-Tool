@@ -60,18 +60,9 @@ def scan():
 
     urls_to_scan = urls[:MAX_URLS]
     crawl_results, skipped_by_robots, robots_access_denied = fetch_pages(urls_to_scan, domain)
-    report = build_report(domain, crawl_results, urls_to_scan, lastmod_by_url)
+    report = build_report(domain, crawl_results, urls_to_scan, lastmod_by_url, total_found)
     report["urls_found_total"] = total_found
     report["skipped_by_robots"] = skipped_by_robots
-    # % of the site actually sampled -- orphan detection in particular is
-    # only as good as this number. Sampling 100 of 2,800 pages means most
-    # "orphan" flags are just "the linking page wasn't in the sample," not a
-    # real finding; this lets the report say so honestly rather than
-    # presenting a low-confidence number with the same confidence as
-    # everything else.
-    report["sample_coverage_pct"] = (
-        round(report["total_pages_scanned"] / total_found * 100) if total_found else None
-    )
     report["robots_access_denied"] = robots_access_denied
 
     # Trimmed subset sent to the optional AI-summary button -- aggregate

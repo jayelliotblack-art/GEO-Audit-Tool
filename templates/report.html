@@ -95,15 +95,15 @@
       <div class="group-pill pill-violet">Schema</div>
       <div class="statline">
         <div class="stat stat-{{ coverage_tier }}">
-          <span class="k">Schema coverage:</span>
+          <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/></svg>Schema coverage:</span>
           <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
         </div>
         <div class="stat stat-{{ quality_tier }}">
-          <span class="k">Schema quality:</span>
+          <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Schema quality:</span>
           <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
         </div>
         <div class="stat stat-{{ issues_tier }}">
-          <span class="k">Issues found:</span>
+          <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M9 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="6" y="7" width="12" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 11H3M21 11h-3M6 15H3M21 15h-3M9 18l-2 3M15 18l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Issues found:</span>
           <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
         </div>
       </div>
@@ -113,7 +113,7 @@
       <div class="group-pill pill-cyan">Crawler &amp; index</div>
       <div class="statline">
         <div class="stat stat-{{ crawler_tier }}">
-          <span class="k">AI crawler access:</span>
+          <span class="k"><svg class="card-icon icon-cyan" viewBox="0 0 24 24" fill="none"><rect x="5" y="9" width="14" height="11" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M12 9V5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="4" r="1.3" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="14.3" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14.3" r="1.2" fill="currentColor" stroke="none"/><path d="M9 18h6M3 12v4M21 12v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>AI crawler access:</span>
           {% if report.blocked_ai_crawlers %}
             <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
           {% else %}
@@ -121,7 +121,7 @@
           {% endif %}
         </div>
         <div class="stat stat-{{ noindex_tier }}">
-          <span class="k">Noindexed pages:</span>
+          <span class="k"><svg class="card-icon icon-cyan" viewBox="0 0 24 24" fill="none"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10.6 5.2A10.4 10.4 0 0112 5c5 0 9 4 10 7-0.4 1.1-1.2 2.5-2.4 3.8M6.5 6.6C4.4 8 2.9 10 2 12c1 3 5 7 10 7 1 0 2-.2 3-.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 10a3 3 0 004.2 4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Noindexed pages:</span>
           {% if report.noindexed_count > 0 %}
             <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.noindexed_count }}</span>
           {% else %}
@@ -129,13 +129,15 @@
           {% endif %}
         </div>
         <div class="stat stat-{{ canonical_tier }}">
-          <span class="k">Canonical issues:</span>
+          <span class="k"><svg class="card-icon icon-cyan" viewBox="0 0 24 24" fill="none"><path d="M9 15l6-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M11 7l1.5-1.5a3.5 3.5 0 015 5L16 12M13 17l-1.5 1.5a3.5 3.5 0 01-5-5L8 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Canonical issues:</span>
           {% if report.canonical_issue_count > 0 %}
             <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.canonical_issue_count }}</span>
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
           {% endif %}
-          <div class="stat-note">Informational -- not yet scored</div>
+          {% if report.canonical_penalty > 0 %}
+            <div class="stat-note">-{{ report.canonical_penalty }} pt{{ 's' if report.canonical_penalty != 1 else '' }} from score (capped at 10)</div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -145,12 +147,12 @@
       <div class="statline">
         {% if report.freshness_median_age_days is not none %}
           <div class="stat stat-{{ freshness_tier }}">
-            <span class="k">Content freshness:</span>
+            <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Content freshness:</span>
             <span class="v {{ freshness_tier }}">{{ report.freshness_pct }}% (median {{ report.freshness_median_age_days }}d old)</span>
           </div>
         {% else %}
           <div class="stat">
-            <span class="k">Content freshness:</span>
+            <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Content freshness:</span>
             <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not enough data</span>
             {% if report.freshness_notes %}
               <div class="stat-note">{{ report.freshness_notes|join(', ') }}</div>
@@ -159,17 +161,17 @@
         {% endif %}
         {% if report.sample_coverage_pct == 100 %}
         <div class="stat stat-{{ orphan_tier }}">
-          <span class="k">Orphan pages:</span>
+          <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><path d="M9 15l1.5-1.5M13.5 10.5L15 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M11 7l1-1a3.5 3.5 0 015 5l-1 1M13 17l-1 1a3.5 3.5 0 01-5-5l1-1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Orphan pages:</span>
           {% if report.orphan_count > 0 %}
             <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.orphan_count }}</span>
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
           {% endif %}
-          <div class="stat-note">No inbound links found anywhere on the site -- not yet scored</div>
+          <div class="stat-note">No inbound links found anywhere on the site{% if report.orphan_penalty > 0 %} -- -{{ report.orphan_penalty }} pt{{ 's' if report.orphan_penalty != 1 else '' }} from score (capped at 15){% endif %}</div>
         </div>
         {% endif %}
         <div class="stat stat-{{ truthfulness_tier }}">
-          <span class="k">Schema truthfulness:</span>
+          <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 10.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Schema truthfulness:</span>
           {% if report.truthfulness_issue_count > 0 %}
             <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.truthfulness_issue_count }} flagged</span>
             <div class="stat-note">
@@ -179,7 +181,7 @@
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
           {% endif %}
-          <div class="stat-note">Static HTML only, may false-positive on JS content -- not yet scored</div>
+          <div class="stat-note">Static HTML only, may false-positive on JS content{% if report.truthfulness_penalty > 0 %} -- -{{ report.truthfulness_penalty }} pt{{ 's' if report.truthfulness_penalty != 1 else '' }} from score (capped at 20){% endif %}</div>
         </div>
       </div>
     </div>
@@ -188,7 +190,7 @@
       <div class="group-pill pill-amber">Standards</div>
       <div class="statline">
         <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
-          <span class="k">llms.txt:</span>
+          <span class="k"><svg class="card-icon icon-amber" viewBox="0 0 24 24" fill="none"><path d="M4 4h16v16H4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>llms.txt:</span>
           {% if report.llms_txt_present %}
             <span class="v {{ llms_tier }}">
               {% if llms_tier == 'good' %}

@@ -53,7 +53,7 @@ body {
 }
 
 .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
-.wrap-report { width: 92%; max-width: 1240px; margin: 0 auto; padding: 56px 0 64px; }
+.wrap-report { width: 94%; max-width: 1480px; margin: 0 auto; padding: 56px 0 64px; }
 
 a { color: var(--accent); }
 
@@ -356,7 +356,7 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  font-size: 15px;
+  font-size: 16px;
 }
 .statline .stat {
   background: var(--card-bg);
@@ -364,13 +364,24 @@ a:focus-visible {
   backdrop-filter: blur(8px);
   border-radius: var(--radius);
   padding: 14px 18px;
-  max-width: 340px;
+  flex: 1 1 280px;
+  max-width: 480px;
 }
 .stat-note { max-width: 100%; }
 .statline .stat.stat-good { box-shadow: 0 0 28px -8px var(--good-glow); border-color: rgba(52, 232, 160, 0.3); }
 .statline .stat.stat-warn { box-shadow: 0 0 28px -8px var(--warn-glow); border-color: rgba(255, 184, 77, 0.3); }
 .statline .stat.stat-bad { box-shadow: 0 0 28px -8px var(--bad-glow); border-color: rgba(255, 93, 138, 0.3); }
-.statline .stat .k { color: var(--ink-muted); font-size: 13.5px; }
+.statline .stat .k { color: var(--ink-muted); font-size: 15px; }
+.card-icon {
+  width: 17px;
+  height: 17px;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+.card-icon.icon-violet { color: var(--accent); }
+.card-icon.icon-cyan { color: var(--cyan); }
+.card-icon.icon-green { color: var(--good); }
+.card-icon.icon-amber { color: var(--warn); }
 .statline .stat .v { font-weight: 600; font-family: var(--mono); color: #fff; }
 .statline .stat .v.good { color: var(--good); }
 .icon {
@@ -384,10 +395,10 @@ a:focus-visible {
 .statline .stat .v.bad { color: var(--bad); }
 .stat-note {
   font-family: var(--sans);
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--ink-muted);
   margin-top: 4px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .breakdown { margin-bottom: 28px; }
@@ -505,6 +516,7 @@ td.muted { color: var(--ink-muted); font-family: var(--sans); }
 
 @media (max-width: 600px) {
   .statline { flex-direction: column; }
+  .statline .stat { flex-basis: auto; max-width: none; }
   .hero-card { flex-direction: column; text-align: center; }
   .dash-toolbar { flex-direction: column; }
   .dash-toolbar-actions { width: 100%; }

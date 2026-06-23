@@ -65,7 +65,7 @@ def _check_robots(domain):
         return ""
 
 
-def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
+def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_found_total=None):
     known_types, _ = load_vocab()  # None, None if the live fetch failed
     lastmod_by_url = lastmod_by_url or {}
 
@@ -269,6 +269,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
     else:
         schema_quality_pct = 0
 
+    sample_coverage_pct = (
+        round(total_pages / urls_found_total * 100) if urls_found_total else None
+    )
+
     if total_pages == 0:
         # No pages were actually scanned (almost always: robots.txt disallowed
         # our crawler on every sampled URL). A score computed from zero data
@@ -278,6 +282,9 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         freshness_pct = None
         freshness_median_age = None
         freshness_notes = []
+        orphan_penalty = 0
+        truthfulness_penalty = 0
+        canonical_penalty = 0
     else:
         # noindex_score: % of scanned pages NOT told to stay out of the
         # index. A noindexed page is invisible to engines regardless of how
@@ -296,7 +303,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         # though it's real, it shouldn't move the score as hard as something
         # unambiguous like noindex. Trimmed evenly off the other six to make
         # room for a genuinely "mild" 4% rather than bolting it on top.
-        overall_score = round(
+        base_score = round(
             schema_coverage_pct * 0.24
             + schema_quality_pct * 0.24
             + noindex_score * 0.12
@@ -306,11 +313,48 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             + freshness_pct * 0.04
         )
 
+        # Flat per-instance penalties on top of the weighted base, rather
+        # than folding these into the percentage pillars above -- each is a
+        # countable, concrete finding (a specific page, a specific entity)
+        # rather than a site-wide rate, so a flat deduction per occurrence
+        # reads more honestly than forcing it into a 0-100 percentage.
+        # Each is capped so one noisy category can't swamp the whole score.
+
+        # Orphan pages: only scored when sample_coverage_pct == 100, mirroring
+        # the display gate exactly. The reasoning is the same as for hiding
+        # it on a partial sample -- below 100% coverage, an "orphan" usually
+        # just means the linking page wasn't sampled, not that the page is
+        # truly unlinked. Scoring an unreliable signal would be worse than
+        # not showing it at all.
+        orphan_penalty = min(orphan_count, 15) if sample_coverage_pct == 100 else 0
+
+        # Schema truthfulness: unlike orphans, this doesn't need full-site
+        # visibility to be reliable -- each flagged entity was checked
+        # against its own page's actual content, independent of sample size.
+        # Weighted higher per instance (2 vs 1) since markup asserting
+        # content that isn't there is arguably worse for AEO trust than a
+        # missing field would be.
+        truthfulness_penalty = min(truthfulness_issue_count * 2, 20)
+
+        # Canonical issues: real, but lower-confidence on average than the
+        # other two -- canonical_issue_count mixes a clearly-broken case
+        # (multiple canonical tags), an ambiguous one (cross-domain, which is
+        # sometimes a deliberate syndication choice, not a mistake), and a
+        # serious one (canonical pointing at a noindexed/broken page) into a
+        # single count. Given that mix, a smaller per-instance weight and a
+        # lower cap than truthfulness feels right until this has been
+        # checked against more real sites to argue for splitting the
+        # sub-cases out and weighting them individually instead.
+        canonical_penalty = min(canonical_issue_count, 10)
+
+        overall_score = max(0, base_score - orphan_penalty - truthfulness_penalty - canonical_penalty)
+
     total_issues = required_issues + recommended_issues + unrecognized_issues
 
     return {
         "domain": domain,
         "root_domain": _root(domain),
+        "sample_coverage_pct": sample_coverage_pct,
         "total_pages_scanned": total_pages,
         "pages_with_schema": pages_with_schema,
         "schema_coverage_pct": round(schema_coverage_pct),
@@ -324,8 +368,11 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         "noindexed_count": noindexed_count,
         "noindex_score": round(noindex_score) if noindex_score is not None else None,
         "canonical_issue_count": canonical_issue_count,
+        "canonical_penalty": canonical_penalty,
         "orphan_count": orphan_count,
+        "orphan_penalty": orphan_penalty,
         "truthfulness_issue_count": truthfulness_issue_count,
+        "truthfulness_penalty": truthfulness_penalty,
         "truthfulness_flagged_urls": truthfulness_flagged_urls,
         "freshness_pct": freshness_pct,
         "freshness_median_age_days": freshness_median_age,
