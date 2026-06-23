@@ -112,7 +112,6 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
         page_url_norm = page["url"].rstrip("/")
         page_links = extract_internal_links(soup, page["url"])
         linked_urls.update(page_links - {page_url_norm})  # a page linking to itself shouldn't un-orphan it
-        visible_text = extract_visible_text(soup)
 
         json_ld_items = extract_json_ld(soup)
         microdata_items = extract_microdata(page["html"], page["url"])
@@ -123,6 +122,13 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
                 entities.append({"type": type_name, "format": "json-ld", "properties": item})
         for m in microdata_items:
             entities.append({"type": m["type"], "format": "microdata", "properties": m["properties"]})
+
+        # extract_visible_text walks every text node in the page -- real cost
+        # on a long blog post or case-study page. check_schema_truthfulness
+        # only ever consumes it for FAQPage/HowTo, so skip the walk entirely
+        # for every other page rather than paying for it unconditionally.
+        needs_visible_text = any(e["type"] in ("FAQPage", "HowTo") for e in entities)
+        visible_text = extract_visible_text(soup) if needs_visible_text else ""
 
         if entities:
             pages_with_schema += 1
@@ -180,6 +186,14 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             "noindexed": noindexed,
             "canonical_urls": canonical_urls,
         })
+
+        # Nothing downstream (Pass 2, the template, the PDF/summary export)
+        # ever needs the raw HTML again -- only the small derived data above.
+        # Drop the reference now rather than holding every page's full body
+        # in memory for the rest of the request; with 100 pages in flight,
+        # that's the difference between releasing ~1 page of HTML at a time
+        # versus all ~100 simultaneously.
+        page["html"] = None
 
     # Pass 2: classify each page's canonical now that url_health is complete,
     # and check orphan status now that linked_urls is complete (both need
