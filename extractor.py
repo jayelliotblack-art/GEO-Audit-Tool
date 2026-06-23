@@ -35,22 +35,28 @@ def parse_html(html):
 
 
 def extract_json_ld(soup):
-    """Returns a list of dicts, each a parsed JSON-LD object with at least
-    an '@type'. Handles scripts containing a single object, a list of
-    objects, or a @graph wrapper."""
+    """Returns (items, malformed_count). items is a list of dicts, each a
+    parsed JSON-LD object with at least an '@type'. Handles scripts
+    containing a single object, a list of objects, or a @graph wrapper.
+    malformed_count tracks scripts that claimed to be JSON-LD but failed to
+    parse -- a real, invisible failure mode: markup that's one stray comma
+    away from being worthless to every engine reading it, with nothing
+    about how the page looks that would tip anyone off."""
     if soup is None:
-        return []
+        return [], 0
 
     blocks = soup.find_all("script", attrs={"type": "application/ld+json"})
 
     items = []
+    malformed_count = 0
     for block in blocks:
         if not block.string:
             continue
         try:
             data = json.loads(block.string)
         except (json.JSONDecodeError, TypeError):
-            continue  # malformed JSON-LD; this itself is worth flagging later
+            malformed_count += 1
+            continue
 
         candidates = data if isinstance(data, list) else [data]
         for candidate in candidates:
@@ -61,7 +67,32 @@ def extract_json_ld(soup):
             else:
                 items.append(candidate)
 
-    return items
+    return items, malformed_count
+
+
+def extract_heading_structure(soup):
+    """Returns {"h1_count": int, "skip_count": int}. skip_count tallies
+    cases where a heading level jumps by more than one compared to the
+    highest level seen so far in document order (e.g. an H1 followed
+    directly by an H3, skipping H2).
+
+    This matters for GEO specifically, not just classic on-page SEO:
+    answer engines and RAG pipelines often chunk a page by its heading
+    outline to figure out what each section is about. An ambiguous outline
+    makes that chunking unreliable regardless of whether a human reader
+    would ever notice the inconsistency."""
+    if soup is None:
+        return {"h1_count": 0, "skip_count": 0}
+    headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+    h1_count = sum(1 for h in headings if h.name == "h1")
+    max_seen = 0
+    skip_count = 0
+    for h in headings:
+        level = int(h.name[1])
+        if level > max_seen + 1:
+            skip_count += 1
+        max_seen = max(max_seen, level)
+    return {"h1_count": h1_count, "skip_count": skip_count}
 
 
 def extract_microdata(html, url):

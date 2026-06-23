@@ -260,6 +260,40 @@ def check_schema_truthfulness(properties, type_name, visible_text):
     return mismatches, len(claims)
 
 
+SPA_SHELL_MARKERS = ('id="root"', 'id="app"', 'id="__next"', 'data-reactroot', 'ng-version')
+
+
+def assess_thin_content(visible_text, raw_html):
+    """Flags a page where the raw HTML response carries very little actual
+    visible text relative to its overall size -- a strong signal that real
+    content is being injected client-side via JavaScript after the initial
+    load. Most AI crawlers (GPTBot, ClaudeBot, PerplexityBot, etc.) fetch
+    pages the same way this tool does: a plain HTTP GET, no JavaScript
+    executed. What this check sees is very close to what they see.
+
+    Requires BOTH a short visible-text length AND a substantial overall
+    page size before flagging anything -- a page that's short because it's
+    GENUINELY minimal (a stub, a thank-you page) is small in both
+    dimensions, not just one. Only the combination of 'barely any text' and
+    'a lot of markup anyway' is suspicious.
+
+    Returns (is_thin: bool, reason: str or None). When a common SPA-shell
+    marker is present (React/Next.js/Angular root divs), names the likely
+    cause directly rather than just describing the symptom."""
+    if raw_html is None:
+        return False, None
+    if len(visible_text) >= 150 or len(raw_html) < 3000:
+        return False, None
+    html_lower = raw_html.lower()
+    if any(marker in html_lower for marker in SPA_SHELL_MARKERS):
+        return True, (
+            "Looks like a JavaScript framework shell (React/Next.js/Angular) -- "
+            "content may only appear after client-side rendering, which most AI "
+            "crawlers don't execute"
+        )
+    return True, "Very little visible text relative to page size -- content may be injected via JavaScript after load"
+
+
 def _explicitly_named_agents(robots_txt):
     """Returns the set of lowercased user-agent names explicitly written in
     the file, excluding '*'. Protego doesn't expose this distinction

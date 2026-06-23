@@ -145,6 +145,9 @@ def generate_pdf(report):
         ("Noindexed pages", str(report.get("noindexed_count", 0)), BAD if report.get("noindexed_count", 0) > 0 else GOOD),
         ("Canonical issues", str(report.get("canonical_issue_count", 0)), BAD if report.get("canonical_issue_count", 0) > 0 else GOOD),
         ("Schema truthfulness", f"{report.get('truthfulness_issue_count', 0)} flagged", BAD if report.get("truthfulness_issue_count", 0) > 0 else GOOD),
+        ("Malformed JSON-LD", str(report.get("malformed_jsonld_pages", 0)), BAD if report.get("malformed_jsonld_pages", 0) > 0 else GOOD),
+        ("Heading structure", f"{report.get('heading_issue_pages', 0)} pages", BAD if report.get("heading_issue_pages", 0) > 0 else GOOD),
+        ("Thin / JS-rendered", str(report.get("thin_content_pages", 0)), BAD if report.get("thin_content_pages", 0) > 0 else GOOD),
         ("Content freshness", f"{report.get('freshness_pct')}% (median {report.get('freshness_median_age_days')}d)" if report.get("freshness_median_age_days") is not None else "Not enough data", _tier(report.get("freshness_pct")) if report.get("freshness_median_age_days") is not None else INK_MUTED),
     ]
     # Orphan detection is only meaningful when the scan actually covered the
@@ -208,6 +211,18 @@ def generate_pdf(report):
                 row.cell(_safe(page["url"]))
                 canon_note = _canonical_note(page.get("canonical"))
                 orphan_note = "Orphan" if page.get("is_orphan") and report.get("sample_coverage_pct") == 100 else ""
+                extra_notes = []
+                if page.get("malformed_jsonld"):
+                    extra_notes.append("Malformed JSON-LD")
+                heading_info = page.get("heading_info") or {}
+                if heading_info.get("h1_count") == 0:
+                    extra_notes.append("Missing H1")
+                elif heading_info.get("h1_count", 0) > 1:
+                    extra_notes.append("Multiple H1 tags")
+                if heading_info.get("skip_count", 0) > 0:
+                    extra_notes.append("Heading level skip")
+                if page.get("is_thin_content"):
+                    extra_notes.append("Thin/JS-rendered content")
                 if page.get("error"):
                     row.cell(_safe(page["error"]))
                     row.cell("")
@@ -216,7 +231,7 @@ def generate_pdf(report):
                         "Noindexed" if page.get("noindexed") else "",
                         orphan_note,
                         canon_note,
-                    ] if n]
+                    ] + extra_notes if n]
                     row.cell("None found")
                     row.cell(_safe(", ".join(notes)))
                 else:
@@ -225,7 +240,7 @@ def generate_pdf(report):
                         "Noindexed" if page.get("noindexed") else "",
                         orphan_note,
                         canon_note,
-                    ] if n]
+                    ] + extra_notes if n]
                     for item in page["schema_items"]:
                         mismatch = item.get("content_mismatch")
                         if mismatch and mismatch["total"] and mismatch["mismatches"] / mismatch["total"] >= 0.5:

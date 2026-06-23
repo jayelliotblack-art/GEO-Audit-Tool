@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from extractor import (
     extract_canonical,
+    extract_heading_structure,
     extract_internal_links,
     extract_json_ld,
     extract_meta_robots,
@@ -27,6 +28,7 @@ from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
     assess_freshness,
+    assess_thin_content,
     classify_ai_crawler_access,
     classify_canonical,
     check_required_fields,
@@ -88,6 +90,13 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
     unrecognized_issues = 0
     truthfulness_issue_count = 0
     truthfulness_flagged_urls = []
+    malformed_jsonld_pages = 0
+    malformed_jsonld_flagged_urls = []
+    pages_missing_h1 = 0
+    pages_multiple_h1 = 0
+    pages_heading_skips = 0
+    thin_content_pages = 0
+    thin_content_flagged_urls = []
 
     for page in crawl_results:
         if page["error"] or not page["html"]:
@@ -97,6 +106,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
                 "schema_items": [],
                 "noindexed": False,
                 "canonical_urls": [],
+                "heading_info": {"h1_count": 0, "skip_count": 0},
+                "malformed_jsonld": False,
+                "is_thin_content": False,
+                "thin_content_reason": None,
             })
             url_health[page["url"].rstrip("/")] = {"noindexed": False, "error": page_data[-1]["error"]}
             continue
@@ -113,8 +126,19 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         page_links = extract_internal_links(soup, page["url"])
         linked_urls.update(page_links - {page_url_norm})  # a page linking to itself shouldn't un-orphan it
 
-        json_ld_items = extract_json_ld(soup)
+        json_ld_items, malformed_count = extract_json_ld(soup)
         microdata_items = extract_microdata(page["html"], page["url"])
+        heading_info = extract_heading_structure(soup)
+
+        if malformed_count > 0:
+            malformed_jsonld_pages += 1
+            malformed_jsonld_flagged_urls.append(page["url"])
+        if heading_info["h1_count"] == 0:
+            pages_missing_h1 += 1
+        if heading_info["h1_count"] > 1:
+            pages_multiple_h1 += 1
+        if heading_info["skip_count"] > 0:
+            pages_heading_skips += 1
 
         entities = []
         for item in json_ld_items:
@@ -123,12 +147,17 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         for m in microdata_items:
             entities.append({"type": m["type"], "format": "microdata", "properties": m["properties"]})
 
-        # extract_visible_text walks every text node in the page -- real cost
-        # on a long blog post or case-study page. check_schema_truthfulness
-        # only ever consumes it for FAQPage/HowTo, so skip the walk entirely
-        # for every other page rather than paying for it unconditionally.
-        needs_visible_text = any(e["type"] in ("FAQPage", "HowTo") for e in entities)
-        visible_text = extract_visible_text(soup) if needs_visible_text else ""
+        # Needed unconditionally now (not just for FAQPage/HowTo truthfulness
+        # checking) since the thin-content check below needs it on every
+        # page. Still bounded by the text-node limit in extract_visible_text
+        # itself, which is what actually keeps this safe on a large page --
+        # see that function's docstring.
+        visible_text = extract_visible_text(soup)
+
+        is_thin, thin_reason = assess_thin_content(visible_text, page["html"])
+        if is_thin:
+            thin_content_pages += 1
+            thin_content_flagged_urls.append(page["url"])
 
         if entities:
             pages_with_schema += 1
@@ -185,6 +214,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
             "schema_items": item_reports,
             "noindexed": noindexed,
             "canonical_urls": canonical_urls,
+            "heading_info": heading_info,
+            "malformed_jsonld": malformed_count > 0,
+            "is_thin_content": is_thin,
+            "thin_content_reason": thin_reason,
         })
 
         # Nothing downstream (Pass 2, the template, the PDF/summary export)
@@ -221,6 +254,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
             "noindexed": pd["noindexed"],
             "canonical": canonical,
             "is_orphan": is_orphan,
+            "heading_info": pd["heading_info"],
+            "malformed_jsonld": pd["malformed_jsonld"],
+            "is_thin_content": pd["is_thin_content"],
+            "thin_content_reason": pd["thin_content_reason"],
         })
 
     total_pages = len(page_data)
@@ -374,6 +411,17 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         "truthfulness_issue_count": truthfulness_issue_count,
         "truthfulness_penalty": truthfulness_penalty,
         "truthfulness_flagged_urls": truthfulness_flagged_urls,
+        "malformed_jsonld_pages": malformed_jsonld_pages,
+        "malformed_jsonld_flagged_urls": malformed_jsonld_flagged_urls,
+        "pages_missing_h1": pages_missing_h1,
+        "pages_multiple_h1": pages_multiple_h1,
+        "pages_heading_skips": pages_heading_skips,
+        "heading_issue_pages": sum(
+            1 for p in page_reports
+            if not p["error"] and (p["heading_info"]["h1_count"] != 1 or p["heading_info"]["skip_count"] > 0)
+        ),
+        "thin_content_pages": thin_content_pages,
+        "thin_content_flagged_urls": thin_content_flagged_urls,
         "freshness_pct": freshness_pct,
         "freshness_median_age_days": freshness_median_age,
         "freshness_notes": freshness_notes,

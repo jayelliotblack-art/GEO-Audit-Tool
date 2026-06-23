@@ -106,6 +106,18 @@
           <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M9 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="6" y="7" width="12" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 11H3M21 11h-3M6 15H3M21 15h-3M9 18l-2 3M15 18l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Issues found:</span>
           <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
         </div>
+        <div class="stat stat-{{ 'bad' if report.malformed_jsonld_pages > 0 else 'good' }}">
+          <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M8 4L3 12l5 8M16 4l5 8-5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9v4M12 16v.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Malformed JSON-LD:</span>
+          {% if report.malformed_jsonld_pages > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.malformed_jsonld_pages }}</span>
+            <div class="stat-note">
+              {% for url in report.malformed_jsonld_flagged_urls[:4] %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% if report.malformed_jsonld_flagged_urls|length > 4 %}, +{{ report.malformed_jsonld_flagged_urls|length - 4 }} more{% endif %}
+            </div>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+          {% endif %}
+        </div>
       </div>
     </div>
 
@@ -182,6 +194,28 @@
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
           {% endif %}
           <div class="stat-note">Static HTML only, may false-positive on JS content{% if report.truthfulness_penalty > 0 %} -- -{{ report.truthfulness_penalty }} pt{{ 's' if report.truthfulness_penalty != 1 else '' }} from score (capped at 20){% endif %}</div>
+        </div>
+        <div class="stat stat-{{ 'bad' if report.heading_issue_pages > 0 else 'good' }}">
+          <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h12M4 18h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Heading structure:</span>
+          {% if report.heading_issue_pages > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.heading_issue_pages }} pages</span>
+            <div class="stat-note">{{ report.pages_missing_h1 }} missing H1, {{ report.pages_multiple_h1 }} multiple H1, {{ report.pages_heading_skips }} level skip{{ 's' if report.pages_heading_skips != 1 else '' }}</div>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>clean</span>
+          {% endif %}
+        </div>
+        <div class="stat stat-{{ 'bad' if report.thin_content_pages > 0 else 'good' }}">
+          <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><path d="M9 4c-2 0-3 1-3 3v2c0 1-1 2-2 2 1 0 2 1 2 2v2c0 2 1 3 3 3M15 4c2 0 3 1 3 3v2c0 1 1 2 2 2-1 0-2 1-2 2v2c0 2-1 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Thin / JS-rendered:</span>
+          {% if report.thin_content_pages > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.thin_content_pages }}</span>
+            <div class="stat-note">
+              {% for url in report.thin_content_flagged_urls[:4] %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% if report.thin_content_flagged_urls|length > 4 %}, +{{ report.thin_content_flagged_urls|length - 4 }} more{% endif %}
+              -- most AI crawlers don't execute JavaScript
+            </div>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -314,9 +348,23 @@
                   {% endif %}
                 {% endif %}
               {% endif %}
+              {% if page.malformed_jsonld %}
+                <span class="tag missing">Malformed JSON-LD (invalid syntax)</span>
+              {% endif %}
+              {% if page.heading_info.h1_count == 0 %}
+                <span class="tag recommended">Missing H1</span>
+              {% elif page.heading_info.h1_count > 1 %}
+                <span class="tag recommended">Multiple H1 tags ({{ page.heading_info.h1_count }})</span>
+              {% endif %}
+              {% if page.heading_info.skip_count > 0 %}
+                <span class="tag recommended">Heading level skip{{ 's' if page.heading_info.skip_count != 1 else '' }} ({{ page.heading_info.skip_count }})</span>
+              {% endif %}
+              {% if page.is_thin_content %}
+                <span class="tag unrecognized">{{ page.thin_content_reason }}</span>
+              {% endif %}
               {% for item in page.schema_items %}
                 {% if item.content_mismatch and item.content_mismatch.mismatches / item.content_mismatch.total >= 0.5 %}
-                  <span class="tag missing">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }})</span>
+                  <span class="tag missing">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }}){% if page.is_thin_content %} -- likely explained by the thin-content/JS-rendering flag on this page, not necessarily fake markup{% endif %}</span>
                 {% endif %}
                 {% for field in item.missing_required %}
                   <span class="tag missing">Missing required: {{ field }}</span>
