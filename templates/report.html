@@ -10,9 +10,24 @@
 </head>
 <body>
   <div class="wrap-report">
-    <a class="back" href="/">&larr; new scan</a>
-    <div class="prompt">scan {{ report.domain }}</div>
-    <p class="domain">{{ report.root_domain }}</p>
+
+    <div class="dash-toolbar">
+      <div>
+        <a class="back" href="/">&larr; new scan</a>
+        <div class="prompt">scan {{ report.domain }}</div>
+      </div>
+      {% if report.overall_score is not none %}
+      <div class="dash-toolbar-actions">
+        <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
+        <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
+          <input type="hidden" name="report_json" id="pdf-report-json">
+          <button type="submit" class="btn btn-secondary">$ download pdf</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+
+    <h1 class="domain">{{ report.root_domain }}</h1>
 
     {% if report.overall_score is none %}
       <div class="callout">
@@ -24,10 +39,27 @@
       </div>
     {% else %}
       {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
-      <div class="scoreblock {{ tier }}">
-        <div class="score">{{ report.overall_score }}/100</div>
+      <div class="hero-card {{ tier }}">
+        <svg class="gauge {{ tier }}" viewBox="0 0 140 140">
+          <circle class="track" cx="70" cy="70" r="58"/>
+          <circle class="arc" cx="70" cy="70" r="58"
+                  stroke-dasharray="{{ (report.overall_score / 100 * 364.42)|round(1) }} 364.42"
+                  transform="rotate(-90 70 70)"/>
+          <text class="gauge-score" x="70" y="66">{{ report.overall_score }}</text>
+          <text class="gauge-max" x="70" y="86">/ 100</text>
+        </svg>
+        <div>
+          <div class="hero-label">Overall GEO / AEO score</div>
+          <div class="hero-meta">
+            Based on <strong>{{ report.total_pages_scanned }} of {{ report.urls_found_total }}</strong> pages found
+            {% if report.sample_coverage_pct is not none %} &middot; sampled <strong>{{ report.sample_coverage_pct }}%</strong> of the site{% endif %}
+          </div>
+        </div>
       </div>
+      <div id="summary-output"></div>
     {% endif %}
+
+    {% if report.overall_score is not none %}
 
     {% set coverage_tier = 'good' if report.schema_coverage_pct >= 70 else ('warn' if report.schema_coverage_pct >= 40 else 'bad') %}
     {% set quality_tier = 'good' if report.schema_quality_pct >= 70 else ('warn' if report.schema_quality_pct >= 40 else 'bad') %}
@@ -37,120 +69,128 @@
     {% set canonical_tier = 'bad' if report.canonical_issue_count > 0 else 'good' %}
     {% set orphan_tier = 'bad' if report.orphan_count > 0 else 'good' %}
     {% set truthfulness_tier = 'bad' if report.truthfulness_issue_count > 0 else 'good' %}
+    {% set llms_tier = 'good' if report.llms_txt_quality_pct >= 70 else ('warn' if report.llms_txt_quality_pct >= 40 else 'bad') %}
+    {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
 
-    <div class="statline">
-      <div class="stat">
-        <span class="k">Pages scanned:</span>
-        <span class="v">{{ report.total_pages_scanned }}/{{ report.urls_found_total }}</span>
+    <div class="stat-group">
+      <div class="group-pill">Schema</div>
+      <div class="statline">
+        <div class="stat stat-{{ coverage_tier }}">
+          <span class="k">Schema coverage:</span>
+          <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
+        </div>
+        <div class="stat stat-{{ quality_tier }}">
+          <span class="k">Schema quality:</span>
+          <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
+        </div>
+        <div class="stat stat-{{ issues_tier }}">
+          <span class="k">Issues found:</span>
+          <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
+        </div>
       </div>
-      <div class="stat stat-{{ coverage_tier }}">
-        <span class="k">Schema coverage:</span>
-        <span class="v">{{ report.schema_coverage_pct }}% ({{ report.pages_with_schema }})</span>
-      </div>
-      <div class="stat stat-{{ quality_tier }}">
-        <span class="k">Schema quality:</span>
-        <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
-      </div>
-      <div class="stat stat-{{ issues_tier }}">
-        <span class="k">Issues found:</span>
-        <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended)</span>
-      </div>
-      <div class="stat stat-{{ crawler_tier }}">
-        <span class="k">AI crawler access:</span>
-        {% if report.blocked_ai_crawlers %}
-          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
-        {% else %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
-        {% endif %}
-      </div>
-      {% set llms_tier = 'good' if report.llms_txt_quality_pct >= 70 else ('warn' if report.llms_txt_quality_pct >= 40 else 'bad') %}
-      <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
-        <span class="k">llms.txt:</span>
-        {% if report.llms_txt_present %}
-          <span class="v {{ llms_tier }}">
-            {% if llms_tier == 'good' %}
-              <svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            {% else %}
-              <svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
-            {% endif %}
-            {{ report.llms_txt_quality_pct }}% quality
-          </span>
-          {% if report.llms_txt_notes %}
-            <div class="stat-note">{{ report.llms_txt_notes|join(', ') }}</div>
+    </div>
+
+    <div class="stat-group">
+      <div class="group-pill">Crawler &amp; index</div>
+      <div class="statline">
+        <div class="stat stat-{{ crawler_tier }}">
+          <span class="k">AI crawler access:</span>
+          {% if report.blocked_ai_crawlers %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.crawler_access_pct }}% ({{ report.blocked_ai_crawlers|length }} blocked)</span>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ report.crawler_access_pct }}% clear</span>
           {% endif %}
-        {% else %}
-          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
-        {% endif %}
+        </div>
+        <div class="stat stat-{{ noindex_tier }}">
+          <span class="k">Noindexed pages:</span>
+          {% if report.noindexed_count > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.noindexed_count }}</span>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+          {% endif %}
+        </div>
+        <div class="stat stat-{{ canonical_tier }}">
+          <span class="k">Canonical issues:</span>
+          {% if report.canonical_issue_count > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.canonical_issue_count }}</span>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+          {% endif %}
+          <div class="stat-note">Informational -- not yet scored</div>
+        </div>
       </div>
-      <div class="stat stat-{{ noindex_tier }}">
-        <span class="k">Noindexed pages:</span>
-        {% if report.noindexed_count > 0 %}
-          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.noindexed_count }}</span>
-        {% else %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
-        {% endif %}
-      </div>
-      <div class="stat stat-{{ canonical_tier }}">
-        <span class="k">Canonical issues:</span>
-        {% if report.canonical_issue_count > 0 %}
-          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.canonical_issue_count }}</span>
-        {% else %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
-        {% endif %}
-        <div class="stat-note">Informational -- not yet scored</div>
-      </div>
-      <div class="stat stat-{{ orphan_tier }}">
-        <span class="k">Orphan pages:</span>
-        {% if report.orphan_count > 0 %}
-          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.orphan_count }}</span>
-        {% else %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
-        {% endif %}
-        {% if report.sample_coverage_pct is not none and report.sample_coverage_pct < 40 %}
-          <div class="stat-note">Low confidence -- only {{ report.sample_coverage_pct }}% of the site was sampled, so most flags here likely just mean the linking page wasn't in the sample, not that the page is truly unlinked</div>
-        {% else %}
-          <div class="stat-note">No inbound links found within pages scanned -- not yet scored</div>
-        {% endif %}
-      </div>
-      <div class="stat stat-{{ truthfulness_tier }}">
-        <span class="k">Schema truthfulness:</span>
-        {% if report.truthfulness_issue_count > 0 %}
-          <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.truthfulness_issue_count }} flagged</span>
-          <div class="stat-note">
-            {% for url in report.truthfulness_flagged_urls[:4] %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}
-            {% if report.truthfulness_flagged_urls|length > 4 %}, +{{ report.truthfulness_flagged_urls|length - 4 }} more{% endif %}
+    </div>
+
+    <div class="stat-group">
+      <div class="group-pill">Content health</div>
+      <div class="statline">
+        {% if report.freshness_median_age_days is not none %}
+          <div class="stat stat-{{ freshness_tier }}">
+            <span class="k">Content freshness:</span>
+            <span class="v {{ freshness_tier }}">{{ report.freshness_pct }}% (median {{ report.freshness_median_age_days }}d old)</span>
           </div>
         {% else %}
-          <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
+          <div class="stat">
+            <span class="k">Content freshness:</span>
+            <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not enough data</span>
+            {% if report.freshness_notes %}
+              <div class="stat-note">{{ report.freshness_notes|join(', ') }}</div>
+            {% endif %}
+          </div>
         {% endif %}
-        <div class="stat-note">Static HTML only, may false-positive on JS content -- not yet scored</div>
-      </div>
-      {% if report.freshness_median_age_days is not none %}
-        {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
-        <div class="stat stat-{{ freshness_tier }}">
-          <span class="k">Content freshness:</span>
-          <span class="v {{ freshness_tier }}">{{ report.freshness_pct }}% (median {{ report.freshness_median_age_days }}d old)</span>
-        </div>
-      {% else %}
-        <div class="stat">
-          <span class="k">Content freshness:</span>
-          <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not enough data</span>
-          {% if report.freshness_notes %}
-            <div class="stat-note">{{ report.freshness_notes|join(', ') }}</div>
+        <div class="stat stat-{{ orphan_tier }}">
+          <span class="k">Orphan pages:</span>
+          {% if report.orphan_count > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.orphan_count }}</span>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
+          {% endif %}
+          {% if report.sample_coverage_pct is not none and report.sample_coverage_pct < 40 %}
+            <div class="stat-note">Low confidence -- only {{ report.sample_coverage_pct }}% of the site was sampled, so most flags here likely just mean the linking page wasn't in the sample, not that the page is truly unlinked</div>
+          {% else %}
+            <div class="stat-note">No inbound links found within pages scanned -- not yet scored</div>
           {% endif %}
         </div>
-      {% endif %}
+        <div class="stat stat-{{ truthfulness_tier }}">
+          <span class="k">Schema truthfulness:</span>
+          {% if report.truthfulness_issue_count > 0 %}
+            <span class="v bad"><svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>{{ report.truthfulness_issue_count }} flagged</span>
+            <div class="stat-note">
+              {% for url in report.truthfulness_flagged_urls[:4] %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {% if report.truthfulness_flagged_urls|length > 4 %}, +{{ report.truthfulness_flagged_urls|length - 4 }} more{% endif %}
+            </div>
+          {% else %}
+            <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
+          {% endif %}
+          <div class="stat-note">Static HTML only, may false-positive on JS content -- not yet scored</div>
+        </div>
+      </div>
     </div>
 
-    {% if report.overall_score is not none %}
-    <div class="summary-block">
-      <button id="summarize-btn" class="btn" onclick="generateSummary()">$ generate summary</button>
-      <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
-        <input type="hidden" name="report_json" id="pdf-report-json">
-        <button type="submit" class="btn btn-secondary">$ download pdf</button>
-      </form>
-      <div id="summary-output"></div>
+    <div class="stat-group">
+      <div class="group-pill">Standards</div>
+      <div class="statline">
+        <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}">
+          <span class="k">llms.txt:</span>
+          {% if report.llms_txt_present %}
+            <span class="v {{ llms_tier }}">
+              {% if llms_tier == 'good' %}
+                <svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {% else %}
+                <svg class="icon" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+              {% endif %}
+              {{ report.llms_txt_quality_pct }}% quality
+            </span>
+            {% if report.llms_txt_notes %}
+              <div class="stat-note">{{ report.llms_txt_notes|join(', ') }}</div>
+            {% endif %}
+          {% else %}
+            <span class="v"><svg class="icon icon-muted" viewBox="0 0 14 14"><line x1="3" y1="7" x2="11" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Absent</span>
+          {% endif %}
+        </div>
+      </div>
     </div>
+
     <script type="application/json" id="full-report-data">{{ report|tojson }}</script>
     <script>
       document.getElementById('pdf-form').addEventListener('submit', function () {
