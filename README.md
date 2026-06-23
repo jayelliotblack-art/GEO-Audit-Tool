@@ -50,14 +50,18 @@ Then open http://localhost:5000
 1. Push this code to a GitHub repository.
 2. On Render: New > Web Service > connect the repo.
 3. Build command: `pip install -r requirements.txt`
-4. Start command: `gunicorn app:app --timeout 60`
+4. Start command: `gunicorn app:app --timeout 120`
 5. Leave everything else as default and deploy.
 
-The `--timeout 60` matters: with `MAX_URLS = 50` and 10 concurrent workers,
-a worst-case scan (several slow/unresponsive pages) can take close to a
-minute. gunicorn's default 30-second worker timeout would kill the request
+The `--timeout 120` matters: with `MAX_URLS = 100` and 10 concurrent workers,
+a worst-case scan (several slow/unresponsive pages) can take close to two
+minutes. gunicorn's default 30-second worker timeout would kill the request
 mid-scan and you'd see a 502 instead of a report. If you raise `MAX_URLS`
-further, raise this timeout to match.
+further, raise this timeout to match -- and know that this architecture
+(one synchronous request per scan, no background job) genuinely doesn't
+scale to "the whole site" for anything beyond a few hundred pages. That
+needs a different design (background jobs + persistence), not just a
+bigger number here.
 
 Render's free tier spins your service down after 15 minutes of no traffic,
 so the first request after a quiet period takes 30-60 seconds to wake back
