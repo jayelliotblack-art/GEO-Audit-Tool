@@ -223,7 +223,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None):
             "is_orphan": is_orphan,
         })
 
-    total_pages = len(crawl_results)
+    total_pages = len(page_data)
     robots_txt = _check_robots(domain)
     ai_crawler_breakdown = classify_ai_crawler_access(robots_txt, sampled_urls)
     blocked_crawlers = [c["bot"] for c in ai_crawler_breakdown if not c["allowed"]]

@@ -71,10 +71,21 @@ def _fetch_one(url):
 
 
 def fetch_pages(urls, domain):
-    """Returns (results, skipped, robots_access_denied). robots_access_denied
-    is True specifically when fetching robots.txt itself got a 401/403 --
-    meaning we can't actually tell what the published policy says, as
-    distinct from genuinely being disallowed by real rules."""
+    """Returns (results, skipped, robots_access_denied). results is a
+    GENERATOR, not a list -- pages are yielded as each fetch completes
+    rather than collected into one list first. That matters: collecting
+    everything upfront means peak memory during the fetch phase scales with
+    how many total pages are being scanned (MAX_URLS), even though only
+    MAX_WORKERS are ever actually in flight at once. Streaming decouples
+    those two numbers -- peak memory now tracks concurrency, not sample
+    size, so raising MAX_URLS doesn't proportionally raise this risk.
+
+    robots_access_denied is True specifically when fetching robots.txt
+    itself got a 401/403 -- meaning we can't actually tell what the
+    published policy says, as distinct from genuinely being disallowed by
+    real rules. Both this and `skipped` are known before any page fetch
+    starts, so they're returned immediately rather than needing the
+    generator to be consumed first."""
     rp, status = _robots_parser_for(domain)
 
     if status == "access_denied":
@@ -84,17 +95,18 @@ def fetch_pages(urls, domain):
     else:
         allowed_urls = [u for u in urls if rp.can_fetch(u, USER_AGENT)]
 
-    results = []
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {pool.submit(_fetch_one, url): url for url in allowed_urls}
-        for future in as_completed(futures):
-            url, html, status_code, error = future.result()
-            results.append({
-                "url": url,
-                "html": html,
-                "status_code": status_code,
-                "error": error,
-            })
-
     skipped = len(urls) - len(allowed_urls)
-    return results, skipped, (status == "access_denied")
+
+    def _stream():
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            futures = {pool.submit(_fetch_one, url): url for url in allowed_urls}
+            for future in as_completed(futures):
+                url, html, status_code, error = future.result()
+                yield {
+                    "url": url,
+                    "html": html,
+                    "status_code": status_code,
+                    "error": error,
+                }
+
+    return _stream(), skipped, (status == "access_denied")
