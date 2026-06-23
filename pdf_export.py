@@ -1,226 +1,145 @@
 """
-pdf_export.py
+extractor.py
 
-Builds a downloadable PDF of a scan report. Uses fpdf2 -- a pure-Python
-library with no native system dependencies. Deliberately not WeasyPrint or
-wkhtmltopdf-based tools: those need Cairo/Pango/a real browser engine
-installed at the OS level, which isn't guaranteed to exist in Render's
-standard Python build environment. fpdf2 trades HTML/CSS convenience for
-that reliability -- the layout below is built by hand rather than reusing
-report.html's CSS.
+Pulls structured data directly out of a page's HTML. Covers the two formats
+that matter in practice: JSON-LD (hand-rolled parsing below, validated
+against real sites) and microdata (via extruct, a well-maintained library --
+no reason to hand-roll a microdata parser when this exists). RDFa is
+deliberately out of scope for now; real-world adoption has dropped enough
+that it's a poor use of v1 effort.
 
-Known limitation: fpdf2's core fonts are Latin-1 only (no bundled Unicode
-font). Text is sanitized to Latin-1 before writing, so any genuinely
-non-Latin characters in a scanned URL or schema value get replaced rather
-than crashing the export -- a rare edge case, not a silent data problem for
-the vast majority of sites.
+parse_html() is called ONCE per page in scorer.py; the resulting soup is
+shared across extract_json_ld, extract_meta_robots, and extract_canonical
+rather than each of them re-parsing the same HTML from scratch. That matters
+more than it looks like it should: on a memory-constrained host (Render's
+free tier is 512MB), three to four full re-parses of a large page's markup
+is a real way to get OOM-killed, not just a wasted CPU cycle. (extruct,
+used for microdata, does its own internal parsing and can't share this --
+no public API to feed it a pre-parsed tree.)
 """
 
-from datetime import datetime, timezone
-from io import BytesIO
+import json
+from urllib.parse import urljoin
 
-from fpdf import FPDF
-from fpdf.fonts import FontFace
-
-GOOD = (30, 122, 92)
-WARN = (182, 134, 44)
-BAD = (178, 58, 46)
-INK = (21, 32, 28)
-INK_MUTED = (91, 102, 96)
-LINE = (220, 226, 220)
-
-PAGE_MARGIN = 15
+import extruct
+from bs4 import BeautifulSoup
 
 
-def _safe(text):
-    """fpdf2's core fonts are Latin-1 only; sanitize rather than crash on a
-    URL or schema value containing other characters."""
-    if text is None:
-        return ""
-    return str(text).encode("latin-1", "replace").decode("latin-1")
+def parse_html(html):
+    """Parses HTML once. Pass the result to extract_json_ld,
+    extract_meta_robots, and extract_canonical instead of raw HTML."""
+    if not html:
+        return None
+    return BeautifulSoup(html, "lxml")
 
 
-def _tier(pct, none_ok=False):
-    if pct is None:
-        return None if none_ok else WARN
-    if pct >= 70:
-        return GOOD
-    if pct >= 40:
-        return WARN
-    return BAD
+def extract_json_ld(soup):
+    """Returns a list of dicts, each a parsed JSON-LD object with at least
+    an '@type'. Handles scripts containing a single object, a list of
+    objects, or a @graph wrapper."""
+    if soup is None:
+        return []
 
+    blocks = soup.find_all("script", attrs={"type": "application/ld+json"})
 
-class ReportPDF(FPDF):
-    def header(self):
-        pass  # no repeating header -- the report's own title page handles this
+    items = []
+    for block in blocks:
+        if not block.string:
+            continue
+        try:
+            data = json.loads(block.string)
+        except (json.JSONDecodeError, TypeError):
+            continue  # malformed JSON-LD; this itself is worth flagging later
 
-    def footer(self):
-        self.set_y(-12)
-        self.set_font("Helvetica", size=8)
-        self.set_text_color(*INK_MUTED)
-        self.cell(0, 8, _safe(f"Page {self.page_no()}"), align="C")
-
-
-def _stat_box(pdf, x, y, w, h, label, value, color):
-    pdf.set_xy(x, y)
-    pdf.set_draw_color(*LINE)
-    pdf.rect(x, y, w, h)
-    pdf.set_xy(x + 3, y + 3)
-    pdf.set_font("Helvetica", size=8)
-    pdf.set_text_color(*INK_MUTED)
-    pdf.cell(w - 6, 5, _safe(label))
-    pdf.set_xy(x + 3, y + 9)
-    pdf.set_font("Courier", "B", size=12)
-    pdf.set_text_color(*(color or INK))
-    pdf.cell(w - 6, 8, _safe(value))
-
-
-def _canonical_note(canonical):
-    if not canonical:
-        return ""
-    status = canonical.get("status")
-    if status == "multiple":
-        return "Multiple canonical tags"
-    if status == "cross_domain":
-        return "Canonical -> different domain"
-    if status == "missing":
-        return "No canonical tag"
-    if status == "other_page":
-        health = canonical.get("target_health")
-        if health and health.get("noindexed"):
-            return "Canonical -> noindexed page"
-        if health and health.get("error"):
-            return "Canonical -> broken page"
-    return ""
-
-
-def generate_pdf(report):
-    """Returns PDF bytes for the given report dict (the same shape scorer.py
-    produces and report.html renders)."""
-    pdf = ReportPDF(format="A4")
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.set_margins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
-    pdf.add_page()
-
-    # -- Title --
-    pdf.set_font("Courier", "B", size=10)
-    pdf.set_text_color(*GOOD)
-    pdf.cell(0, 6, "$ schema-audit", ln=True)
-    pdf.set_font("Courier", "B", size=18)
-    pdf.set_text_color(*INK)
-    pdf.multi_cell(0, 9, _safe(report.get("domain", "")), ln=True)
-    pdf.set_font("Helvetica", size=9)
-    pdf.set_text_color(*INK_MUTED)
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    pdf.cell(0, 6, _safe(f"GEO/AEO structured data audit -- generated {generated}"), ln=True)
-    pdf.ln(4)
-
-    # -- Score --
-    score = report.get("overall_score")
-    score_color = _tier(score)
-    if score is None:
-        pdf.set_font("Courier", "B", size=28)
-        pdf.set_text_color(*WARN)
-        pdf.cell(0, 16, "No score", ln=True)
-        pdf.set_font("Helvetica", size=10)
-        pdf.set_text_color(*INK_MUTED)
-        pdf.multi_cell(0, 5, _safe(
-            "Couldn't scan any pages on this run -- see the AI crawler "
-            "access notes below for why."
-        ))
-    else:
-        pdf.set_font("Courier", "B", size=36)
-        pdf.set_text_color(*score_color)
-        pdf.cell(0, 18, _safe(f"{score}/100"), ln=True)
-    pdf.ln(2)
-
-    # -- Stat grid (2 rows x 4 cols) --
-    stats = [
-        ("Pages scanned", f"{report.get('total_pages_scanned', 0)}/{report.get('urls_found_total', 0)}", None),
-        ("Schema coverage", f"{report.get('schema_coverage_pct', 0)}% ({report.get('pages_with_schema', 0)})", _tier(report.get("schema_coverage_pct"))),
-        ("Schema quality", f"{report.get('schema_quality_pct', 0)}%", _tier(report.get("schema_quality_pct"))),
-        ("Issues found", f"{report.get('total_issues', 0)} ({report.get('required_issues', 0)} req, {report.get('recommended_issues', 0)} rec)", BAD if report.get("required_issues", 0) > 0 else (WARN if report.get("total_issues", 0) > 0 else GOOD)),
-        ("AI crawler access", f"{report.get('crawler_access_pct', 0)}%", _tier(report.get("crawler_access_pct"))),
-        ("llms.txt", f"{report.get('llms_txt_quality_pct', 0)}% quality" if report.get("llms_txt_present") else "Absent", _tier(report.get("llms_txt_quality_pct")) if report.get("llms_txt_present") else INK_MUTED),
-        ("Noindexed pages", str(report.get("noindexed_count", 0)), BAD if report.get("noindexed_count", 0) > 0 else GOOD),
-        ("Canonical issues", f"{report.get('canonical_issue_count', 0)} (informational)", BAD if report.get("canonical_issue_count", 0) > 0 else GOOD),
-        ("Content freshness", f"{report.get('freshness_pct')}% (median {report.get('freshness_median_age_days')}d)" if report.get("freshness_median_age_days") is not None else "Not enough data", _tier(report.get("freshness_pct")) if report.get("freshness_median_age_days") is not None else INK_MUTED),
-    ]
-    col_w = (210 - 2 * PAGE_MARGIN) / 4
-    row_h = 18
-    start_y = pdf.get_y()
-    for i, (label, value, color) in enumerate(stats):
-        col = i % 4
-        row = i // 4
-        x = PAGE_MARGIN + col * col_w
-        y = start_y + row * (row_h + 3)
-        _stat_box(pdf, x, y, col_w - 3, row_h, label, value, color)
-    pdf.set_y(start_y + ((len(stats) - 1) // 4 + 1) * (row_h + 3) + 4)
-
-    # -- AI crawler breakdown --
-    breakdown = report.get("ai_crawler_breakdown") or []
-    if breakdown:
-        pdf.set_font("Helvetica", "B", size=10)
-        pdf.set_text_color(*INK)
-        pdf.cell(0, 7, "AI Crawler Breakdown", ln=True)
-        pdf.set_font("Helvetica", size=8)
-        for c in breakdown:
-            if c["allowed"] and c["explicit"]:
-                label, color = "named & allowed", GOOD
-            elif c["allowed"]:
-                label, color = "inherited, allowed", GOOD
-            elif not c["explicit"]:
-                label, color = "inherited, blocked", WARN
+        candidates = data if isinstance(data, list) else [data]
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            if "@graph" in candidate and isinstance(candidate["@graph"], list):
+                items.extend(g for g in candidate["@graph"] if isinstance(g, dict))
             else:
-                label, color = "named & blocked", BAD
-            pdf.set_text_color(*INK)
-            pdf.cell(45, 5, _safe(c["bot"]))
-            pdf.set_text_color(*color)
-            pdf.cell(0, 5, _safe(label), ln=True)
-        pdf.ln(3)
+                items.append(candidate)
 
-    # -- Per-page table --
-    pages = report.get("pages") or []
-    if pages:
-        pdf.set_font("Helvetica", "B", size=10)
-        pdf.set_text_color(*INK)
-        pdf.cell(0, 7, f"Pages scanned ({len(pages)})", ln=True)
-        pdf.set_font("Helvetica", size=8)
+    return items
 
-        heading_style = FontFace(family="Helvetica", emphasis="BOLD", size_pt=8, color=255, fill_color=INK)
-        with pdf.table(
-            col_widths=(35, 25, 40),
-            text_align=("LEFT", "LEFT", "LEFT"),
-            line_height=4.5,
-            headings_style=heading_style,
-        ) as table:
-            header_row = table.row()
-            for h in ("URL", "Schema types", "Issues"):
-                header_row.cell(h)
-            for page in pages[:200]:  # hard ceiling so a pathological report can't produce an unbounded PDF
-                row = table.row()
-                row.cell(_safe(page["url"]))
-                canon_note = _canonical_note(page.get("canonical"))
-                if page.get("error"):
-                    row.cell(_safe(page["error"]))
-                    row.cell("")
-                elif not page.get("schema_items"):
-                    notes = ([] if not page.get("noindexed") else ["Noindexed"]) + ([] if not canon_note else [canon_note])
-                    row.cell("None found")
-                    row.cell(_safe(", ".join(notes)))
-                else:
-                    types = ", ".join(item["type"] for item in page["schema_items"])
-                    issues = []
-                    if page.get("noindexed"):
-                        issues.append("Noindexed")
-                    if canon_note:
-                        issues.append(canon_note)
-                    for item in page["schema_items"]:
-                        issues += [f"Missing: {f}" for f in item.get("missing_required", [])]
-                        issues += [f"Recommended: {f}" for f in item.get("missing_recommended", [])]
-                    row.cell(_safe(types))
-                    row.cell(_safe(", ".join(issues)))
 
-    buf = BytesIO()
-    pdf.output(buf)
-    return buf.getvalue()
+def extract_microdata(html, url):
+    """Returns a list of {"type": str, "properties": dict} -- normalized to
+    the same shape regardless of source format so scorer.py doesn't need to
+    care which extraction path an entity came from. Takes raw html (not the
+    shared soup) since extruct does its own parsing internally."""
+    if not html:
+        return []
+
+    try:
+        data = extruct.extract(html, base_url=url, syntaxes=["microdata"])
+    except Exception:
+        return []  # a parsing failure here shouldn't take down the whole scan
+
+    results = []
+    for entry in data.get("microdata", []):
+        type_url = entry.get("type")
+        if not type_url:
+            continue
+        type_name = type_url.rstrip("/").rsplit("/", 1)[-1]
+        results.append({
+            "type": type_name,
+            "properties": entry.get("properties") or {},
+        })
+    return results
+
+
+def extract_meta_robots(soup):
+    """Returns the lowercased content of <meta name="robots"> if present,
+    else None. A page can be fully allowed by robots.txt and still tell
+    crawlers not to index it via this tag -- a different, page-level signal
+    robots.txt has no way to show."""
+    if soup is None:
+        return None
+    tag = soup.find("meta", attrs={"name": lambda v: bool(v) and v.lower() == "robots"})
+    if tag and tag.get("content"):
+        return tag["content"].strip().lower()
+    return None
+
+
+def is_noindexed(meta_robots_content):
+    """meta_robots_content is the raw, comma-separated directive string
+    (e.g. 'noindex, nofollow'). Checks specifically for 'noindex' as its own
+    directive, not just a substring -- avoids a false match on some
+    hypothetical future directive that merely contains those letters."""
+    if not meta_robots_content:
+        return False
+    directives = [d.strip() for d in meta_robots_content.split(",")]
+    return "noindex" in directives
+
+
+def extract_canonical(soup, page_url):
+    """Returns a list of resolved canonical URLs found on the page (relative
+    hrefs resolved against page_url). A well-formed page has exactly one;
+    returning all of them rather than just the first lets the caller flag
+    the 'more than one canonical tag' case, which is itself a real bug --
+    browsers and engines just pick one arbitrarily when that happens."""
+    if soup is None:
+        return []
+    tags = soup.find_all("link", rel=True)
+    hrefs = []
+    for tag in tags:
+        rel = tag.get("rel")
+        rel_values = rel if isinstance(rel, list) else [rel]
+        if any(r and r.lower() == "canonical" for r in rel_values):
+            href = tag.get("href")
+            if href:
+                hrefs.append(urljoin(page_url, href.strip()))
+    return hrefs
+
+
+def get_types(item):
+    """@type can be a string or a list of strings. Normalize to a list,
+    dropping any malformed entries that aren't plain strings (some sites'
+    JSON-LD has @type as a nested object, which would otherwise blow up a
+    dict lookup downstream)."""
+    t = item.get("@type")
+    if t is None:
+        return []
+    candidates = t if isinstance(t, list) else [t]
+    return [c for c in candidates if isinstance(c, str)]
