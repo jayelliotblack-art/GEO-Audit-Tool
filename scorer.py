@@ -12,6 +12,8 @@ know whether 40/30/30 is the right split.
 import requests
 from urllib.parse import urlparse
 
+from summary_builder import build_executive_summary, build_issue_records
+
 from extractor import (
     extract_canonical,
     extract_heading_structure,
@@ -295,6 +297,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         })
 
     total_pages = len(page_data)
+    heading_issue_pages = sum(
+        1 for p in page_reports
+        if not p["error"] and (p["heading_info"]["h1_count"] != 1 or p["heading_info"]["skip_count"] > 0)
+    )
     robots_txt = _check_robots(domain)
     ai_crawler_breakdown = classify_ai_crawler_access(robots_txt, sampled_urls)
     blocked_crawlers = [c["bot"] for c in ai_crawler_breakdown if not c["allowed"]]
@@ -356,6 +362,9 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         orphan_penalty = 0
         truthfulness_penalty = 0
         canonical_penalty = 0
+        heading_penalty = 0
+        malformed_jsonld_penalty = 0
+        thin_content_penalty = 0
     else:
         # noindex_score: % of scanned pages NOT told to stay out of the
         # index. A noindexed page is invisible to engines regardless of how
@@ -418,11 +427,37 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         # sub-cases out and weighting them individually instead.
         canonical_penalty = min(canonical_issue_count, 10)
 
-        overall_score = max(0, base_score - orphan_penalty - truthfulness_penalty - canonical_penalty)
+        # Heading structure: 1 point per affected page, capped at 15. Doesn't
+        # need full-site coverage to be reliable (unlike orphans) -- each
+        # page's own heading outline is independent of how many other pages
+        # were sampled, so this isn't gated by sample_coverage_pct.
+        heading_penalty = min(heading_issue_pages, 15)
+
+        # Malformed JSON-LD: 2 points per affected page, capped at 20 --
+        # same weight as schema truthfulness, since a block that fails to
+        # parse provides exactly as much value to anything reading it as
+        # markup that lies: zero.
+        malformed_jsonld_penalty = min(malformed_jsonld_pages * 2, 20)
+
+        # Thin / JS-rendered content: 5 points per page, deliberately the
+        # steepest per-instance weight of any penalty -- a page an AI
+        # crawler effectively can't read is a more severe problem than an
+        # incomplete one. Capped at 25 (5 pages) rather than left uncapped:
+        # this check has a real, documented false-positive risk (see
+        # assess_thin_content) since it only ever sees raw HTML, never
+        # anything a legitimate JS-heavy site renders client-side. Weighting
+        # it 2.5x heavier per instance than truthfulness/malformed while
+        # ALSO leaving it uncapped would let one noisy, false-positive-prone
+        # signal dominate the entire score; capping keeps the severity
+        # without that risk.
+        thin_content_penalty = min(thin_content_pages * 5, 25)
+
+        overall_score = max(0, base_score - orphan_penalty - truthfulness_penalty - canonical_penalty
+                             - heading_penalty - malformed_jsonld_penalty - thin_content_penalty)
 
     total_issues = required_issues + recommended_issues + unrecognized_issues
 
-    return {
+    report = {
         "domain": domain,
         "root_domain": _root(domain),
         "sample_coverage_pct": sample_coverage_pct,
@@ -446,15 +481,15 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         "truthfulness_penalty": truthfulness_penalty,
         "truthfulness_flagged_urls": truthfulness_flagged_urls,
         "malformed_jsonld_pages": malformed_jsonld_pages,
+        "malformed_jsonld_penalty": malformed_jsonld_penalty,
         "malformed_jsonld_flagged_urls": malformed_jsonld_flagged_urls,
         "pages_missing_h1": pages_missing_h1,
         "pages_multiple_h1": pages_multiple_h1,
         "pages_heading_skips": pages_heading_skips,
-        "heading_issue_pages": sum(
-            1 for p in page_reports
-            if not p["error"] and (p["heading_info"]["h1_count"] != 1 or p["heading_info"]["skip_count"] > 0)
-        ),
+        "heading_issue_pages": heading_issue_pages,
+        "heading_penalty": heading_penalty,
         "thin_content_pages": thin_content_pages,
+        "thin_content_penalty": thin_content_penalty,
         "thin_content_flagged_urls": thin_content_flagged_urls,
         "freshness_pct": freshness_pct,
         "freshness_median_age_days": freshness_median_age,
@@ -469,3 +504,10 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         "overall_score": overall_score,
         "pages": page_reports,
     }
+
+    # Computed last, since both need the complete report dict above as
+    # input -- entirely template-fragment selection, no LLM call, no
+    # per-scan cost.
+    report["issue_records"] = sorted(build_issue_records(report), key=lambda r: -r["points"])
+    report["executive_summary"] = build_executive_summary(report)
+    return report

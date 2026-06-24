@@ -164,7 +164,36 @@ def generate_pdf(report):
         x = PAGE_MARGIN + col * col_w
         y = start_y + row * (row_h + 3)
         _stat_box(pdf, x, y, col_w - 3, row_h, label, value, color)
-    pdf.set_y(start_y + ((len(stats) - 1) // 4 + 1) * (row_h + 3) + 4)
+    pdf.set_xy(PAGE_MARGIN, start_y + ((len(stats) - 1) // 4 + 1) * (row_h + 3) + 4)
+
+    # -- Executive summary + issues found, all categories --
+    summary_paragraphs = report.get("executive_summary") or []
+    if summary_paragraphs:
+        pdf.set_x(PAGE_MARGIN)
+        pdf.set_font("Helvetica", "B", size=10)
+        pdf.set_text_color(*INK)
+        pdf.cell(0, 7, "Executive Summary", ln=True)
+        pdf.set_font("Helvetica", size=9)
+        pdf.set_text_color(*INK)
+        for para in summary_paragraphs:
+            pdf.set_x(PAGE_MARGIN)
+            pdf.multi_cell(0, 5, _safe(para))
+            pdf.ln(1)
+        pdf.ln(2)
+
+    issue_records = report.get("issue_records") or []
+    if issue_records:
+        pdf.set_x(PAGE_MARGIN)
+        pdf.set_font("Helvetica", "B", size=10)
+        pdf.set_text_color(*INK)
+        pdf.cell(0, 7, "Issues Found, All Categories", ln=True)
+        pdf.set_font("Helvetica", size=8)
+        for r in issue_records:
+            pdf.set_x(PAGE_MARGIN)
+            pdf.set_text_color(*INK)
+            points_str = f" (-{r['points']} pts)" if r.get("points", 0) > 0 else ""
+            pdf.multi_cell(0, 5, _safe(f"{r['label']}{points_str}: {r['note']}"))
+        pdf.ln(4)
 
     # -- AI crawler breakdown --
     breakdown = report.get("ai_crawler_breakdown") or []

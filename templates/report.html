@@ -57,9 +57,8 @@
       </div>
     {% else %}
       {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
-      {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
       <div class="detail-scope">
-        <div class="hero-card {{ tier }}">
+        <div class="hero-card {{ tier }}" data-detail="detail-hero-summary">
           <svg class="gauge {{ tier }}" viewBox="0 0 140 140">
             <circle class="track" cx="70" cy="70" r="58"/>
             <circle class="arc" cx="70" cy="70" r="58"
@@ -74,17 +73,30 @@
               Based on <strong>{{ report.total_pages_scanned }} of {{ report.urls_found_total }}</strong> pages found
               {% if report.sample_coverage_pct is not none %} &middot; sampled <strong>{{ report.sample_coverage_pct }}%</strong> of the site{% endif %}
             </div>
-          </div>
-          <div class="stat stat-{{ issues_tier }} hero-issues" data-detail="detail-issues">
-            <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M9 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="6" y="7" width="12" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 11H3M21 11h-3M6 15H3M21 15h-3M9 18l-2 3M15 18l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Issues found:</span>
-            <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} unrecognized{% endif %})</span>
+            <div class="hero-meta hero-cta">{{ report.total_issues }} schema issue{{ 's' if report.total_issues != 1 else '' }} plus {{ report.issue_records|length }} other categor{{ 'y' if report.issue_records|length == 1 else 'ies' }} flagged -- click for the full summary</div>
           </div>
         </div>
         <div class="detail-panel" id="panel-hero">
-          <div class="detail-content" id="detail-issues">
-            <div class="detail-header"><div class="detail-title">Issues found</div><button class="detail-close" onclick="closeDetail('panel-hero')">Close &times;</button></div>
-            <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.required_issues }} missing required field{{ 's' if report.required_issues != 1 else '' }}, {{ report.recommended_issues }} missing recommended field{{ 's' if report.recommended_issues != 1 else '' }}{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} schema type{{ 's' if report.unrecognized_issues != 1 else '' }} not recognized against schema.org's vocabulary{% endif %}.</div></div>
-            <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not a separate pillar on its own -- these counts are exactly what drives the Schema Quality percentage above. Fixing required-field issues moves that number, and the score, the most.</div></div>
+          <div class="detail-content" id="detail-hero-summary">
+            <div class="detail-header"><div class="detail-title">Executive summary</div><button class="detail-close" onclick="closeDetail('panel-hero')">Close &times;</button></div>
+            <div class="detail-section">
+              <div class="detail-label">Summary</div>
+              {% for paragraph in report.executive_summary %}
+                <div class="detail-body" style="margin-bottom:10px;">{{ paragraph }}</div>
+              {% endfor %}
+            </div>
+            <div class="detail-section">
+              <div class="detail-label">Issues found, all categories</div>
+              {% if report.issue_records %}
+                <ul class="issues-list">
+                  {% for r in report.issue_records %}
+                    <li><strong>{{ r.label }}</strong>{% if r.points > 0 %} <span class="issues-list-points">&minus;{{ r.points }} pt{{ 's' if r.points != 1 else '' }}</span>{% endif %} &mdash; {{ r.note }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="detail-body">No issues found in any scored category.</div>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -357,7 +369,7 @@
           cardEl.classList.add('active');
         }
       }
-      document.querySelectorAll('.stat[data-detail]').forEach(function (card) {
+      document.querySelectorAll('[data-detail]').forEach(function (card) {
         card.setAttribute('tabindex', '0');
         card.setAttribute('role', 'button');
         card.addEventListener('click', function () { toggleDetail(card, card.getAttribute('data-detail')); });
