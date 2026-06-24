@@ -14,13 +14,12 @@ import json
 import re
 from urllib.parse import urlparse
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, render_template, request
 
 from crawler import fetch_pages
 from pdf_export import generate_pdf
 from sitemap import get_sitemap_urls
 from scorer import build_report
-from summarizer import generate_summary
 
 app = Flask(__name__)
 app.jinja_env.filters["urlpath"] = lambda u: urlparse(u).path or "/"
@@ -65,37 +64,7 @@ def scan():
     report["skipped_by_robots"] = skipped_by_robots
     report["robots_access_denied"] = robots_access_denied
 
-    # Trimmed subset sent to the optional AI-summary button -- aggregate
-    # stats only, not every page/URL, to keep the prompt (and its cost) small.
-    summary_data = {
-        "domain": report["root_domain"],
-        "overall_score": report["overall_score"],
-        "schema_coverage_pct": report["schema_coverage_pct"],
-        "pages_with_schema": report["pages_with_schema"],
-        "total_pages_scanned": report["total_pages_scanned"],
-        "schema_quality_pct": report["schema_quality_pct"],
-        "scoreable_complete": report["scoreable_complete"],
-        "scoreable_total": report["scoreable_total"],
-        "crawler_access_pct": report["crawler_access_pct"],
-        "blocked_ai_crawlers": report["blocked_ai_crawlers"],
-        "ai_crawler_breakdown": report["ai_crawler_breakdown"],
-        "llms_txt_present": report["llms_txt_present"],
-        "noindexed_count": report["noindexed_count"],
-        "canonical_issue_count": report["canonical_issue_count"],
-        "freshness_pct": report["freshness_pct"],
-        "freshness_median_age_days": report["freshness_median_age_days"],
-    }
-
-    return render_template("report.html", report=report, summary_data=summary_data)
-
-
-@app.route("/summarize", methods=["POST"])
-def summarize():
-    data = request.get_json(silent=True) or {}
-    summary, error = generate_summary(data)
-    if error:
-        return jsonify({"error": error}), 502
-    return jsonify({"summary": summary})
+    return render_template("report.html", report=report)
 
 
 @app.route("/download-pdf", methods=["POST"])

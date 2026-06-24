@@ -235,7 +235,8 @@ def generate_pdf(report):
                     row.cell("None found")
                     row.cell(_safe(", ".join(notes)))
                 else:
-                    types = ", ".join(item["type"] for item in page["schema_items"])
+                    groups = page.get("schema_groups") or []
+                    types = ", ".join(g["type"] + (f" x{g['count']}" if g["count"] > 1 else "") for g in groups) or "(all instances flagged -- see issues)"
                     issues = [n for n in [
                         "Noindexed" if page.get("noindexed") else "",
                         orphan_note,
@@ -244,9 +245,9 @@ def generate_pdf(report):
                     for item in page["schema_items"]:
                         mismatch = item.get("content_mismatch")
                         if mismatch and mismatch["total"] and mismatch["mismatches"] / mismatch["total"] >= 0.5:
-                            issues.append(f"{item['type']} content not found ({mismatch['mismatches']}/{mismatch['total']})")
-                        issues += [f"Missing: {f}" for f in item.get("missing_required", [])]
-                        issues += [f"Recommended: {f}" for f in item.get("missing_recommended", [])]
+                            issues.append(f"{item['type']}: content not found ({mismatch['mismatches']}/{mismatch['total']})")
+                        issues += [f"{item['type']}: Missing: {f}" for f in item.get("missing_required", [])]
+                        issues += [f"{item['type']}: Recommended: {f}" for f in item.get("missing_recommended", [])]
                     row.cell(_safe(types))
                     row.cell(_safe(", ".join(issues)))
 

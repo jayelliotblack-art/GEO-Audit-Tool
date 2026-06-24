@@ -18,10 +18,9 @@
       </div>
       {% if report.overall_score is not none %}
       <div class="dash-toolbar-actions">
-        <button id="summarize-btn" class="btn" onclick="generateSummary()">Generate summary</button>
         <form id="pdf-form" method="post" action="/download-pdf" style="display:inline">
           <input type="hidden" name="report_json" id="pdf-report-json">
-          <button type="submit" class="btn btn-secondary">Download PDF</button>
+          <button type="submit" class="btn">Download PDF</button>
         </form>
       </div>
       {% endif %}
@@ -58,24 +57,37 @@
       </div>
     {% else %}
       {% set tier = 'good' if report.overall_score >= 70 else ('warn' if report.overall_score >= 40 else 'bad') %}
-      <div class="hero-card {{ tier }}">
-        <svg class="gauge {{ tier }}" viewBox="0 0 140 140">
-          <circle class="track" cx="70" cy="70" r="58"/>
-          <circle class="arc" cx="70" cy="70" r="58"
-                  stroke-dasharray="{{ (report.overall_score / 100 * 364.42)|round(1) }} 364.42"
-                  transform="rotate(-90 70 70)"/>
-          <text class="gauge-score" x="70" y="66">{{ report.overall_score }}</text>
-          <text class="gauge-max" x="70" y="86">/ 100</text>
-        </svg>
-        <div>
-          <div class="hero-label">Overall GEO / AEO score</div>
-          <div class="hero-meta">
-            Based on <strong>{{ report.total_pages_scanned }} of {{ report.urls_found_total }}</strong> pages found
-            {% if report.sample_coverage_pct is not none %} &middot; sampled <strong>{{ report.sample_coverage_pct }}%</strong> of the site{% endif %}
+      {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
+      <div class="detail-scope">
+        <div class="hero-card {{ tier }}">
+          <svg class="gauge {{ tier }}" viewBox="0 0 140 140">
+            <circle class="track" cx="70" cy="70" r="58"/>
+            <circle class="arc" cx="70" cy="70" r="58"
+                    stroke-dasharray="{{ (report.overall_score / 100 * 364.42)|round(1) }} 364.42"
+                    transform="rotate(-90 70 70)"/>
+            <text class="gauge-score" x="70" y="66">{{ report.overall_score }}</text>
+            <text class="gauge-max" x="70" y="86">/ 100</text>
+          </svg>
+          <div class="hero-text">
+            <div class="hero-label">Overall GEO / AEO score</div>
+            <div class="hero-meta">
+              Based on <strong>{{ report.total_pages_scanned }} of {{ report.urls_found_total }}</strong> pages found
+              {% if report.sample_coverage_pct is not none %} &middot; sampled <strong>{{ report.sample_coverage_pct }}%</strong> of the site{% endif %}
+            </div>
+          </div>
+          <div class="stat stat-{{ issues_tier }} hero-issues" data-detail="detail-issues">
+            <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M9 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="6" y="7" width="12" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 11H3M21 11h-3M6 15H3M21 15h-3M9 18l-2 3M15 18l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Issues found:</span>
+            <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} unrecognized{% endif %})</span>
+          </div>
+        </div>
+        <div class="detail-panel" id="panel-hero">
+          <div class="detail-content" id="detail-issues">
+            <div class="detail-header"><div class="detail-title">Issues found</div><button class="detail-close" onclick="closeDetail('panel-hero')">Close &times;</button></div>
+            <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.required_issues }} missing required field{{ 's' if report.required_issues != 1 else '' }}, {{ report.recommended_issues }} missing recommended field{{ 's' if report.recommended_issues != 1 else '' }}{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} schema type{{ 's' if report.unrecognized_issues != 1 else '' }} not recognized against schema.org's vocabulary{% endif %}.</div></div>
+            <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not a separate pillar on its own -- these counts are exactly what drives the Schema Quality percentage above. Fixing required-field issues moves that number, and the score, the most.</div></div>
           </div>
         </div>
       </div>
-      <div id="summary-output"></div>
     {% endif %}
 
     {% if report.overall_score is not none %}
@@ -83,7 +95,6 @@
     {% set coverage_tier = 'good' if report.schema_coverage_pct >= 70 else ('warn' if report.schema_coverage_pct >= 40 else 'bad') %}
     {% set quality_tier = 'good' if report.schema_quality_pct >= 70 else ('warn' if report.schema_quality_pct >= 40 else 'bad') %}
     {% set crawler_tier = 'good' if report.crawler_access_pct >= 70 else ('warn' if report.crawler_access_pct >= 40 else 'bad') %}
-    {% set issues_tier = 'bad' if report.required_issues > 0 else ('warn' if report.total_issues > 0 else 'good') %}
     {% set noindex_tier = 'bad' if report.noindexed_count > 0 else 'good' %}
     {% set canonical_tier = 'bad' if report.canonical_issue_count > 0 else 'good' %}
     {% set orphan_tier = 'bad' if report.orphan_count > 0 else 'good' %}
@@ -91,7 +102,7 @@
     {% set llms_tier = 'good' if report.llms_txt_quality_pct >= 70 else ('warn' if report.llms_txt_quality_pct >= 40 else 'bad') %}
     {% set freshness_tier = 'good' if report.freshness_pct >= 70 else ('warn' if report.freshness_pct >= 40 else 'bad') %}
 
-    <div class="stat-group">
+    <div class="stat-group detail-scope">
       <div class="group-pill pill-violet">Schema</div>
       <div class="statline">
         <div class="stat stat-{{ coverage_tier }}" data-detail="detail-coverage">
@@ -101,10 +112,6 @@
         <div class="stat stat-{{ quality_tier }}" data-detail="detail-quality">
           <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Schema quality:</span>
           <span class="v">{{ report.schema_quality_pct }}% ({{ report.scoreable_complete }}/{{ report.scoreable_total }})</span>
-        </div>
-        <div class="stat stat-{{ issues_tier }}" data-detail="detail-issues">
-          <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M9 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><rect x="6" y="7" width="12" height="11" rx="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 11H3M21 11h-3M6 15H3M21 15h-3M9 18l-2 3M15 18l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Issues found:</span>
-          <span class="v">{{ report.total_issues }} ({{ report.required_issues }} required, {{ report.recommended_issues }} recommended{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} unrecognized{% endif %})</span>
         </div>
         <div class="stat stat-{{ 'bad' if report.malformed_jsonld_pages > 0 else 'good' }}" data-detail="detail-malformed">
           <span class="k"><svg class="card-icon icon-violet" viewBox="0 0 24 24" fill="none"><path d="M8 4L3 12l5 8M16 4l5 8-5 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 9v4M12 16v.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Malformed JSON-LD:</span>
@@ -130,11 +137,6 @@
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.scoreable_complete }} of {{ report.scoreable_total }} schema entities are fully complete -- every required <em>and</em> recommended field present for their type.</div></div>
           <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Also worth up to <strong>24%</strong> of the score, weighted so a missing required field costs more than a missing recommended one. Usually the single biggest lever for improving your score.</div></div>
         </div>
-        <div class="detail-content" id="detail-issues">
-          <div class="detail-header"><div class="detail-title">Issues found</div><button class="detail-close" onclick="closeDetail('panel-schema')">Close &times;</button></div>
-          <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.required_issues }} missing required field{{ 's' if report.required_issues != 1 else '' }}, {{ report.recommended_issues }} missing recommended field{{ 's' if report.recommended_issues != 1 else '' }}{% if report.unrecognized_issues > 0 %}, {{ report.unrecognized_issues }} schema type{{ 's' if report.unrecognized_issues != 1 else '' }} not recognized against schema.org's vocabulary{% endif %}.</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not a separate pillar on its own -- these counts are exactly what drives the Schema Quality percentage above. Fixing required-field issues moves that number, and the score, the most.</div></div>
-        </div>
         <div class="detail-content" id="detail-malformed">
           <div class="detail-header"><div class="detail-title">Malformed JSON-LD</div><button class="detail-close" onclick="closeDetail('panel-schema')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">
@@ -150,7 +152,7 @@
       </div>
     </div>
 
-    <div class="stat-group">
+    <div class="stat-group detail-scope">
       <div class="group-pill pill-cyan">Crawler &amp; index</div>
       <div class="statline">
         <div class="stat stat-{{ crawler_tier }}" data-detail="detail-crawler">
@@ -200,7 +202,7 @@
       </div>
     </div>
 
-    <div class="stat-group">
+    <div class="stat-group detail-scope">
       <div class="group-pill pill-green">Content health</div>
       <div class="statline">
         {% if report.freshness_median_age_days is not none %}
@@ -299,7 +301,7 @@
       </div>
     </div>
 
-    <div class="stat-group">
+    <div class="stat-group detail-scope">
       <div class="group-pill pill-amber">Standards</div>
       <div class="statline">
         <div class="stat {{ ('stat-' ~ llms_tier) if report.llms_txt_present else '' }}" data-detail="detail-llms">
@@ -338,7 +340,7 @@
         if (!panel) return;
         panel.classList.remove('open');
         panel.querySelectorAll('.detail-content').forEach(function (d) { d.style.display = 'none'; });
-        panel.closest('.stat-group').querySelectorAll('.stat.active').forEach(function (s) { s.classList.remove('active'); });
+        panel.closest('.detail-scope').querySelectorAll('.stat.active').forEach(function (s) { s.classList.remove('active'); });
       }
       function toggleDetail(cardEl, detailId) {
         var detail = document.getElementById(detailId);
@@ -346,7 +348,7 @@
         var panel = detail.closest('.detail-panel');
         var wasOpen = panel.classList.contains('open') && detail.style.display === 'block';
         panel.querySelectorAll('.detail-content').forEach(function (d) { d.style.display = 'none'; });
-        panel.closest('.stat-group').querySelectorAll('.stat.active').forEach(function (s) { s.classList.remove('active'); });
+        panel.closest('.detail-scope').querySelectorAll('.stat.active').forEach(function (s) { s.classList.remove('active'); });
         if (wasOpen) {
           panel.classList.remove('open');
         } else {
@@ -374,38 +376,6 @@
         document.getElementById('pdf-report-json').value =
           document.getElementById('full-report-data').textContent;
       });
-    </script>
-    <script type="application/json" id="summary-data">{{ summary_data|tojson }}</script>
-    <script>
-      async function generateSummary() {
-        const btn = document.getElementById('summarize-btn');
-        const output = document.getElementById('summary-output');
-        const data = JSON.parse(document.getElementById('summary-data').textContent);
-        btn.disabled = true;
-        btn.textContent = 'generating...';
-        output.textContent = '';
-        output.className = '';
-        try {
-          const resp = await fetch('/summarize', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data),
-          });
-          const json = await resp.json();
-          if (json.error) {
-            output.textContent = '! ' + json.error;
-            output.className = 'error-text';
-          } else {
-            output.textContent = json.summary;
-          }
-        } catch (e) {
-          output.textContent = '! Something went wrong generating the summary.';
-          output.className = 'error-text';
-        } finally {
-          btn.disabled = false;
-          btn.textContent = 'Generate summary';
-        }
-      }
     </script>
     {% endif %}
 
@@ -442,9 +412,11 @@
             <td>
               {% if not page.schema_items %}
                 <span class="muted">No structured data found</span>
+              {% elif not page.schema_groups %}
+                <span class="muted">All instances flagged -- see issues</span>
               {% else %}
-                {% for item in page.schema_items %}
-                  <a class="tag type" href="{{ item.docs_url }}" target="_blank" rel="noopener">{{ item.type }}<span style="opacity:.6"> &middot; {{ item.format }}</span></a>
+                {% for group in page.schema_groups %}
+                  <a class="tag type" href="{{ group.docs_url }}" target="_blank" rel="noopener">{{ group.type }}{% if group.count > 1 %} &times;{{ group.count }}{% endif %}<span style="opacity:.6"> &middot; {{ group.format }}</span></a>
                 {% endfor %}
               {% endif %}
             </td>
@@ -488,16 +460,16 @@
               {% endif %}
               {% for item in page.schema_items %}
                 {% if item.content_mismatch and item.content_mismatch.mismatches / item.content_mismatch.total >= 0.5 %}
-                  <span class="tag missing">{{ item.type }} content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }}){% if page.is_thin_content %} -- likely explained by the thin-content/JS-rendering flag on this page, not necessarily fake markup{% endif %}</span>
+                  <span class="tag missing">{{ item.type }}: content not found on page ({{ item.content_mismatch.mismatches }}/{{ item.content_mismatch.total }}){% if page.is_thin_content %} -- likely explained by the thin-content/JS-rendering flag on this page, not necessarily fake markup{% endif %}</span>
                 {% endif %}
                 {% for field in item.missing_required %}
-                  <span class="tag missing">Missing required: {{ field }}</span>
+                  <span class="tag missing">{{ item.type }}: Missing required: {{ field }}</span>
                 {% endfor %}
                 {% for field in item.missing_recommended %}
-                  <span class="tag recommended">Missing recommended: {{ field }}</span>
+                  <span class="tag recommended">{{ item.type }}: Missing recommended: {{ field }}</span>
                 {% endfor %}
                 {% if not item.recognized %}
-                  <span class="tag unrecognized">Unrecognized type</span>
+                  <span class="tag unrecognized">{{ item.type }}: Unrecognized type</span>
                 {% endif %}
               {% endfor %}
             </td>

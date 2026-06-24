@@ -67,6 +67,39 @@ def _check_robots(domain):
         return ""
 
 
+def _is_flawed(item):
+    """An entity is excluded from the clean-count grouping only for a
+    genuinely serious issue: a missing required field, an unrecognized
+    type, or a truthfulness mismatch. A missing RECOMMENDED field alone
+    does not exclude it -- that's common and low-severity enough (e.g. a
+    missing image) that treating it as 'flawed' would defeat the point of
+    grouping on exactly the pages that need it most. The missing-recommended
+    tag still shows in the Issues column either way; this only controls
+    whether the instance counts toward the type's group in the Types column."""
+    mismatch = item.get("content_mismatch")
+    has_mismatch = bool(mismatch and mismatch["total"] and mismatch["mismatches"] / mismatch["total"] >= 0.5)
+    return bool(item["missing_required"] or not item["recognized"] or has_mismatch)
+
+
+def _group_schema_items(schema_items):
+    """Collapses repeated CLEAN instances of the same type into one entry
+    with a count (e.g. 'Comment x7') instead of one tag per instance --
+    a real problem on pages with dozens of repeated entities, like a
+    recipe blog with one Comment entity per user comment. Returns a list
+    of {"type", "format", "count", "docs_url"}, sorted by type name for a
+    stable display order. Flawed instances are excluded here (see
+    _is_flawed) -- they show up only in the Issues column."""
+    clean_by_type = {}
+    for item in schema_items:
+        if _is_flawed(item):
+            continue
+        key = (item["type"], item["format"])
+        if key not in clean_by_type:
+            clean_by_type[key] = {"type": item["type"], "format": item["format"], "count": 0, "docs_url": item["docs_url"]}
+        clean_by_type[key]["count"] += 1
+    return sorted(clean_by_type.values(), key=lambda g: g["type"])
+
+
 def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_found_total=None):
     known_types, _ = load_vocab()  # None, None if the live fetch failed
     lastmod_by_url = lastmod_by_url or {}
@@ -251,6 +284,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
             "url": pd["url"],
             "error": pd["error"],
             "schema_items": pd["schema_items"],
+            "schema_groups": _group_schema_items(pd["schema_items"]),
             "noindexed": pd["noindexed"],
             "canonical": canonical,
             "is_orphan": is_orphan,
