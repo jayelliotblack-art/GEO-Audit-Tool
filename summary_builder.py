@@ -133,7 +133,19 @@ def build_issue_records(report):
     return records
 
 
+def _clean_domain(domain):
+    """Strips the protocol and a leading www. for natural reading in prose
+    -- https://www.betterup.com becomes betterup.com. The report header
+    elsewhere still shows the full root_domain on purpose; this is specific
+    to how a domain reads inside a sentence."""
+    cleaned = domain.replace("https://", "").replace("http://", "")
+    if cleaned.startswith("www."):
+        cleaned = cleaned[4:]
+    return cleaned
+
+
 def _score_opening(score, domain):
+    domain = _clean_domain(domain)
     if score >= 85:
         return f"{domain} scores {score}/100 for AI search readiness -- a strong result that puts it well ahead of most sites we've audited."
     if score >= 70:

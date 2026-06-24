@@ -191,8 +191,7 @@ def generate_pdf(report):
         for r in issue_records:
             pdf.set_x(PAGE_MARGIN)
             pdf.set_text_color(*INK)
-            points_str = f" (-{r['points']} pts)" if r.get("points", 0) > 0 else ""
-            pdf.multi_cell(0, 5, _safe(f"{r['label']}{points_str}: {r['note']}"))
+            pdf.multi_cell(0, 5, _safe(f"{r['label']}: {r['note']}"))
         pdf.ln(4)
 
     # -- AI crawler breakdown --

@@ -224,15 +224,6 @@ a:focus-visible {
 
 /* ============================= REPORT PAGE ============================= */
 
-.back {
-  font-size: 13px;
-  color: var(--ink-muted);
-  text-decoration: none;
-  display: inline-block;
-  margin-bottom: 20px;
-}
-.back:hover { color: #fff; }
-
 .dash-toolbar {
   display: flex;
   justify-content: space-between;
@@ -431,15 +422,6 @@ a:focus-visible {
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 6px;
-}
-.issues-list-points {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--bad);
-  background: var(--bad-bg);
-  padding: 1px 6px;
-  border-radius: 4px;
-  margin-left: 2px;
 }
 .stat-note { max-width: 100%; }
 .stat.stat-good { box-shadow: 0 0 28px -8px var(--good-glow); border-color: rgba(52, 232, 160, 0.3); }

@@ -13,7 +13,6 @@
 
     <div class="dash-toolbar">
       <div>
-        <a class="back" href="/">&larr; new scan</a>
         <div class="scan-target">Scanned {{ report.domain }}</div>
       </div>
       {% if report.overall_score is not none %}
@@ -90,7 +89,7 @@
               {% if report.issue_records %}
                 <ul class="issues-list">
                   {% for r in report.issue_records %}
-                    <li><strong>{{ r.label }}</strong>{% if r.points > 0 %} <span class="issues-list-points">&minus;{{ r.points }} pt{{ 's' if r.points != 1 else '' }}</span>{% endif %} &mdash; {{ r.note }}</li>
+                    <li><strong>{{ r.label }}</strong> &mdash; {{ r.note }}</li>
                   {% endfor %}
                 </ul>
               {% else %}
@@ -142,12 +141,12 @@
         <div class="detail-content" id="detail-coverage">
           <div class="detail-header"><div class="detail-title">Schema coverage</div><button class="detail-close" onclick="closeDetail('panel-schema')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.pages_with_schema }} of {{ report.total_pages_scanned }} pages scanned have at least one piece of structured data ({{ report.schema_coverage_pct }}%).</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">One of the two largest pillars in the score, worth up to <strong>24%</strong> of the total. AI systems rely heavily on structured data to understand what a page is about, so how much of your site even has it matters as much as how good it is.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">One of the two largest factors in the score. AI systems rely heavily on structured data to understand what a page is about, so how much of your site even has it matters as much as how good it is.</div></div>
         </div>
         <div class="detail-content" id="detail-quality">
           <div class="detail-header"><div class="detail-title">Schema quality</div><button class="detail-close" onclick="closeDetail('panel-schema')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.scoreable_complete }} of {{ report.scoreable_total }} schema entities are fully complete -- every required <em>and</em> recommended field present for their type.</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Also worth up to <strong>24%</strong> of the score, weighted so a missing required field costs more than a missing recommended one. Usually the single biggest lever for improving your score.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Also one of the two largest factors in the score, weighted so a missing required field costs more than a missing recommended one. Usually the single biggest lever for improving your score.</div></div>
         </div>
         <div class="detail-content" id="detail-malformed">
           <div class="detail-header"><div class="detail-title">Malformed JSON-LD</div><button class="detail-close" onclick="closeDetail('panel-schema')">Close &times;</button></div>
@@ -159,7 +158,7 @@
               No malformed JSON-LD found.
             {% endif %}
           </div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not currently scored. A block that fails to parse provides zero value to anything reading it, regardless of what it would have said -- arguably a strong candidate to weight once proven against more real sites.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Now factored into the score -- a block that fails to parse provides zero value to anything reading it, regardless of what it would have said.</div></div>
         </div>
       </div>
     </div>
@@ -190,26 +189,23 @@
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
           {% endif %}
-          {% if report.canonical_penalty > 0 %}
-            <div class="stat-note">-{{ report.canonical_penalty }} pt{{ 's' if report.canonical_penalty != 1 else '' }} from score (capped at 10)</div>
-          {% endif %}
         </div>
       </div>
       <div class="detail-panel" id="panel-crawler">
         <div class="detail-content" id="detail-crawler">
           <div class="detail-header"><div class="detail-title">AI crawler access</div><button class="detail-close" onclick="closeDetail('panel-crawler')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.ai_crawler_breakdown|length - report.blocked_ai_crawlers|length }} of {{ report.ai_crawler_breakdown|length }} known AI crawlers are allowed in.{% if report.blocked_ai_crawlers %} Blocked: {{ report.blocked_ai_crawlers|join(', ') }}.{% endif %}</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Worth up to <strong>12%</strong> of the base score, plus a separate swing of up to +5 points for explicitly naming and allowing a bot, or -15 points for explicitly blocking one -- a deliberate block is weighted three times heavier than a deliberate allow, since shutting a crawler out is the more consequential decision.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">A meaningful factor in the score. Explicitly blocking a known AI crawler is treated as a notably more consequential decision than explicitly allowing one, since deliberately shutting a crawler out is the bigger of the two calls to make.</div></div>
         </div>
         <div class="detail-content" id="detail-noindex">
           <div class="detail-header"><div class="detail-title">Noindexed pages</div><button class="detail-close" onclick="closeDetail('panel-crawler')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.noindexed_count }} of {{ report.total_pages_scanned }} scanned pages carry a noindex directive.</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Worth up to <strong>12%</strong> of the base score. A noindexed page is invisible to engines no matter how good its schema is, so this is weighted on par with crawler access.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">A meaningful factor in the score, weighted on par with AI crawler access -- a noindexed page is invisible to engines no matter how good its schema is.</div></div>
         </div>
         <div class="detail-content" id="detail-canonical">
           <div class="detail-header"><div class="detail-title">Canonical issues</div><button class="detail-close" onclick="closeDetail('panel-crawler')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.canonical_issue_count }} canonical tag issue{{ 's' if report.canonical_issue_count != 1 else '' }} found -- this covers pages with more than one canonical tag, canonical tags pointing to a different domain, and canonical tags pointing at a page that's noindexed or broken.</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">1 point per issue, capped at 10. Weighted lower than schema truthfulness because this count mixes a clear bug (multiple tags) with a genuinely ambiguous case -- cross-domain canonicals are sometimes a deliberate syndication choice, not a mistake.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">A smaller factor in the score than schema truthfulness, since this count mixes a clear bug (multiple tags) with a genuinely ambiguous case -- cross-domain canonicals are sometimes a deliberate syndication choice, not a mistake.</div></div>
         </div>
       </div>
     </div>
@@ -239,7 +235,7 @@
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0</span>
           {% endif %}
-          <div class="stat-note">No inbound links found anywhere on the site{% if report.orphan_penalty > 0 %} -- -{{ report.orphan_penalty }} pt{{ 's' if report.orphan_penalty != 1 else '' }} from score (capped at 15){% endif %}</div>
+          <div class="stat-note">No inbound links found anywhere on the site</div>
         </div>
         {% endif %}
         <div class="stat stat-{{ truthfulness_tier }}" data-detail="detail-truthfulness">
@@ -253,7 +249,7 @@
           {% else %}
             <span class="v good"><svg class="icon" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>0 flagged</span>
           {% endif %}
-          <div class="stat-note">Static HTML only, may false-positive on JS content{% if report.truthfulness_penalty > 0 %} -- -{{ report.truthfulness_penalty }} pt{{ 's' if report.truthfulness_penalty != 1 else '' }} from score (capped at 20){% endif %}</div>
+          <div class="stat-note">Static HTML only, may false-positive on JS content</div>
         </div>
         <div class="stat stat-{{ 'bad' if report.heading_issue_pages > 0 else 'good' }}" data-detail="detail-headings">
           <span class="k"><svg class="card-icon icon-green" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h12M4 18h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Heading structure:</span>
@@ -284,31 +280,31 @@
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">
             {% if report.freshness_median_age_days is not none %}Median content age across sampled pages with usable lastmod data: {{ report.freshness_median_age_days }} days.{% else %}Not enough reliable lastmod data in the sitemap to assess this{% if report.freshness_notes %} -- {{ report.freshness_notes|join(', ') }}{% endif %}.{% endif %}
           </div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Worth up to <strong>4%</strong> of the base score -- intentionally the smallest pillar, since lastmod data in sitemaps is a noisier signal in practice than the others (some sites stamp every URL with the same regeneration date rather than the real content-change date).</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Intentionally one of the smaller factors in the score, since lastmod data in sitemaps is a noisier signal in practice than the others (some sites stamp every URL with the same regeneration date rather than the real content-change date).</div></div>
         </div>
         <div class="detail-content" id="detail-orphan">
           <div class="detail-header"><div class="detail-title">Orphan pages</div><button class="detail-close" onclick="closeDetail('panel-content')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.orphan_count }} page{{ 's' if report.orphan_count != 1 else '' }} with no inbound links from anywhere else on the site.</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">1 point per orphan page, capped at 15. Only scored when the scan covers 100% of the site -- on a partial sample, an "orphan" usually just means the linking page wasn't sampled, not that the page is truly unlinked, so scoring it below full coverage would be scoring an unreliable signal.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Only scored when the scan covers 100% of the site -- on a partial sample, an "orphan" usually just means the linking page wasn't sampled, not that the page is truly unlinked, so scoring it below full coverage would be scoring an unreliable signal.</div></div>
         </div>
         <div class="detail-content" id="detail-truthfulness">
           <div class="detail-header"><div class="detail-title">Schema truthfulness</div><button class="detail-close" onclick="closeDetail('panel-content')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">
             {% if report.truthfulness_flagged_urls %}{{ report.truthfulness_issue_count }} entit{{ 'y' if report.truthfulness_issue_count == 1 else 'ies' }} flagged on: {% for url in report.truthfulness_flagged_urls %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}No truthfulness mismatches found.{% endif %}
           </div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">2 points per flagged entity, capped at 20 -- the highest per-instance weight of any penalty, since markup asserting content that isn't actually on the page is arguably worse for AI trust than having no markup at all. Caveat: only raw HTML is checked, so this can false-positive on legitimately JS-rendered pages (see Thin/JS-rendered).</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">One of the more heavily weighted factors in the score, since markup asserting content that isn't actually on the page is arguably worse for AI trust than having no markup at all. Caveat: only raw HTML is checked, so this can false-positive on legitimately JS-rendered pages (see Thin/JS-rendered).</div></div>
         </div>
         <div class="detail-content" id="detail-headings">
           <div class="detail-header"><div class="detail-title">Heading structure</div><button class="detail-close" onclick="closeDetail('panel-content')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">{{ report.pages_missing_h1 }} page{{ 's' if report.pages_missing_h1 != 1 else '' }} missing an H1, {{ report.pages_multiple_h1 }} with more than one H1, {{ report.pages_heading_skips }} with a heading level skip (e.g. H1 straight to H3).</div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not currently scored -- informational for now. The case for scoring it: AI systems and RAG pipelines often chunk a page by its heading outline, so an ambiguous structure can make that chunking unreliable independent of whether a human reader would ever notice.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Now factored into the score. AI systems and RAG pipelines often chunk a page by its heading outline, so an ambiguous structure can make that chunking unreliable independent of whether a human reader would ever notice.</div></div>
         </div>
         <div class="detail-content" id="detail-thin">
           <div class="detail-header"><div class="detail-title">Thin / JS-rendered content</div><button class="detail-close" onclick="closeDetail('panel-content')">Close &times;</button></div>
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">
             {% if report.thin_content_flagged_urls %}{{ report.thin_content_pages }} page{{ 's' if report.thin_content_pages != 1 else '' }} flagged: {% for url in report.thin_content_flagged_urls %}{{ url|urlpath }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}No thin-content pages found.{% endif %}
           </div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Not currently scored -- informational for now, and deliberately conservative: this only flags pages with both very little visible text <em>and</em> a large overall page size, specifically to avoid flagging genuinely minimal pages (a stub, a thank-you page) as false positives.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Now factored into the score, and one of the more heavily weighted factors -- a page AI crawlers genuinely can't read is a serious problem. Deliberately conservative in how it flags: only pages with both very little visible text <em>and</em> a large overall page size get flagged, specifically to avoid treating genuinely minimal pages (a stub, a thank-you page) as false positives.</div></div>
         </div>
       </div>
     </div>
@@ -341,7 +337,7 @@
           <div class="detail-section"><div class="detail-label">What we found</div><div class="detail-body">
             {% if report.llms_txt_present %}Present, graded at {{ report.llms_txt_quality_pct }}% quality.{% if report.llms_txt_notes %} {{ report.llms_txt_notes|join(', ') }}.{% endif %}{% else %}No llms.txt file found at the site root.{% endif %}
           </div></div>
-          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">Worth up to <strong>12%</strong> of the base score. Graded on actual content quality (a title, real links, structured sections) rather than just whether the file exists -- a one-line stub scores low even though it's technically present.</div></div>
+          <div class="detail-section"><div class="detail-label">Score impact</div><div class="detail-body">A meaningful factor in the score. Graded on actual content quality (a title, real links, structured sections) rather than just whether the file exists -- a one-line stub scores low even though it's technically present.</div></div>
         </div>
       </div>
     </div>
