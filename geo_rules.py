@@ -73,6 +73,20 @@ PRIORITY_TYPES = {
 # this audit that's actually GEO-specific rather than generic SEO hygiene.
 GEO_SIGNAL_TYPES = {"FAQPage", "HowTo", "SpeakableSpecification", "QAPage"}
 
+# The weighted pillars that make up base_score in scorer.py, defined ONCE
+# here rather than duplicated -- both scorer.py's formula and
+# summary_builder.py's "how many points is this pillar costing" calculation
+# read from this same dict, so they can't silently drift apart.
+SCORE_WEIGHTS = {
+    "schema_coverage": 0.24,
+    "schema_quality": 0.24,
+    "noindex": 0.12,
+    "crawler_access": 0.12,
+    "geo_signal": 0.12,
+    "llms_txt": 0.12,
+    "freshness": 0.04,
+}
+
 # Known AI crawler user-agents to check for in robots.txt. New ones show up
 # fairly often -- worth revisiting this list every few months.
 AI_CRAWLER_USER_AGENTS = [

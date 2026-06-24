@@ -29,6 +29,7 @@ from extractor import (
 from geo_rules import (
     AI_CRAWLER_USER_AGENTS,
     GEO_SIGNAL_TYPES,
+    SCORE_WEIGHTS,
     assess_freshness,
     assess_thin_content,
     classify_ai_crawler_access,
@@ -384,13 +385,13 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         # unambiguous like noindex. Trimmed evenly off the other six to make
         # room for a genuinely "mild" 4% rather than bolting it on top.
         base_score = round(
-            schema_coverage_pct * 0.24
-            + schema_quality_pct * 0.24
-            + noindex_score * 0.12
-            + crawler_access_pct * 0.12
-            + geo_signal_score * 0.12
-            + llms_txt_quality_pct * 0.12
-            + freshness_pct * 0.04
+            schema_coverage_pct * SCORE_WEIGHTS["schema_coverage"]
+            + schema_quality_pct * SCORE_WEIGHTS["schema_quality"]
+            + noindex_score * SCORE_WEIGHTS["noindex"]
+            + crawler_access_pct * SCORE_WEIGHTS["crawler_access"]
+            + geo_signal_score * SCORE_WEIGHTS["geo_signal"]
+            + llms_txt_quality_pct * SCORE_WEIGHTS["llms_txt"]
+            + freshness_pct * SCORE_WEIGHTS["freshness"]
         )
 
         # Flat per-instance penalties on top of the weighted base, rather
@@ -465,6 +466,7 @@ def build_report(domain, crawl_results, sampled_urls, lastmod_by_url=None, urls_
         "pages_with_schema": pages_with_schema,
         "schema_coverage_pct": round(schema_coverage_pct),
         "schema_quality_pct": round(schema_quality_pct),
+        "geo_signal_score": round(geo_signal_score),
         "scoreable_total": scoreable_total,
         "scoreable_complete": scoreable_complete,
         "total_issues": total_issues,
